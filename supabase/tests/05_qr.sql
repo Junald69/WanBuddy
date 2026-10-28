@@ -184,6 +184,48 @@ select tests.become_super();
 select tests.eq('QR: 申請中の相手とQRで承認済みに更新(重複行なし)',
   (select count(*) from public.friendships where status = 'accepted' and method = 'qr' and tests.uid('p2') in (requester_id, addressee_id)), 2::bigint);
 
+-- ---- M-4: QRによる承認への更新は「申請中」と「QR提示者(トークン所有者)自身が拒否した」場合のみ ---------------------------------------
+--   スキャン側が拒否した相手(declined の拒否側 = スキャン側)は、QRを読み取っても再申請/承認できない(ブロック同等の迂回防止)。
+select tests.set_now_jst('2026-11-01 10:00');
+select tests.mkuser('m4_own'); select tests.mkuser('m4_a'); select tests.mkuser('m4_b'); select tests.mkuser('m4_c'); select tests.mkuser('m4_d');
+-- m4_a: scanner が申請し QR所有者が拒否 → 更新OK(上のp3と同じ)
+insert into public.friendships (requester_id, addressee_id, status, method, responded_at) values (tests.uid('m4_a'), tests.uid('m4_own'), 'declined', 'code', now());
+-- m4_b: QR所有者が申請し scanner が拒否 → 拒否側 = scanner なので更新不可
+insert into public.friendships (requester_id, addressee_id, status, method, responded_at) values (tests.uid('m4_own'), tests.uid('m4_b'), 'declined', 'code', now());
+-- m4_c: QR所有者が申請して pending → 更新OK
+insert into public.friendships (requester_id, addressee_id, status, method) values (tests.uid('m4_own'), tests.uid('m4_c'), 'pending', 'code');
+-- m4_d: scanner が申請して pending → 更新OK
+insert into public.friendships (requester_id, addressee_id, status, method) values (tests.uid('m4_d'), tests.uid('m4_own'), 'pending', 'code');
+select tests.become('m4_own'); select qr_token as tm4 from public.issue_qr_token() \gset
+select tests.become('m4_b');
+select tests.eq('M-4 スキャン側が拒否した相手のQR → 汎用拒否 WB001', tests.errstate(format('select * from public.redeem_qr_token(%L)', :'tm4')), 'WB001');
+select tests.eq('M-4 拒否文言は他の拒否理由と同一(理由を悟らせない)',
+  tests.errmsg(format('select * from public.redeem_qr_token(%L)', :'tm4')),
+  tests.errmsg(format('select * from public.redeem_qr_token(%L)', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')));
+select tests.become_super();
+select tests.ok('M-4 拒否時: 友達関係は declined のまま・method/responded_at も不変',
+  (select status = 'declined' and method = 'code' and responded_at is not null
+     from public.friendships where requester_id = tests.uid('m4_own') and addressee_id = tests.uid('m4_b')));
+select tests.eq('M-4 拒否時: トークンの use_count は増えない', (select use_count from public.qr_tokens where token_hash = sha256(convert_to(:'tm4', 'UTF8'))), 0);
+select tests.eq('M-4 拒否時: 読み取りログも残らない', (select count(*) from public.qr_scans where owner_id = tests.uid('m4_own')), 0::bigint);
+select tests.become('m4_a'); select 1 from public.redeem_qr_token(:'tm4');
+select tests.become('m4_c'); select 1 from public.redeem_qr_token(:'tm4');
+select tests.become('m4_d'); select 1 from public.redeem_qr_token(:'tm4');
+select tests.become_super();
+select tests.eq('M-4 QR所有者が拒否した相手(declined)はQRで承認に更新される',
+  (select count(*) from public.friendships where status = 'accepted' and method = 'qr' and requester_id = tests.uid('m4_a') and addressee_id = tests.uid('m4_own')), 1::bigint);
+select tests.eq('M-4 申請中(所有者→スキャン側)はQRで承認に更新される',
+  (select count(*) from public.friendships where status = 'accepted' and method = 'qr' and requester_id = tests.uid('m4_own') and addressee_id = tests.uid('m4_c')), 1::bigint);
+select tests.eq('M-4 申請中(スキャン側→所有者)はQRで承認に更新される',
+  (select count(*) from public.friendships where status = 'accepted' and method = 'qr' and requester_id = tests.uid('m4_d') and addressee_id = tests.uid('m4_own')), 1::bigint);
+select tests.eq('M-4 重複行は作られない(m4_own との関係は計4行)', (select count(*) from public.friendships where tests.uid('m4_own') in (requester_id, addressee_id)), 4::bigint);
+-- 拒否した側が QR を出して、拒否された側が読んだ場合は m4_a と同じ(更新OK)ことを逆向きでも確認: m4_b が QR を出し、m4_own が読む(拒否側 = m4_b = QR所有者)
+select tests.become('m4_b'); select qr_token as tm4b from public.issue_qr_token() \gset
+select tests.become('m4_own'); select 1 from public.redeem_qr_token(:'tm4b');
+select tests.become_super();
+select tests.eq('M-4 拒否した本人がQRを提示すれば、相手(拒否された側)はQRで承認できる',
+  (select count(*) from public.friendships where status = 'accepted' and method = 'qr' and requester_id = tests.uid('m4_own') and addressee_id = tests.uid('m4_b')), 1::bigint);
+
 -- ---- 期限切れQR等の定期削除 ----------------------------------------------------------------------------------------------------------------
 select tests.set_now_jst('2026-11-05 10:00');
 select tests.become_service();

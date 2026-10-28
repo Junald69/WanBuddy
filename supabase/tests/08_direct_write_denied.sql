@@ -32,8 +32,8 @@ insert into _exp_col values
   ('dogs','UPDATE','birthday,breed,name,personality,photo_path,sort_order,visibility_dog'),
   ('feedback','INSERT','body,kind,user_id'),
   ('profile_settings','UPDATE','accept_qr,searchable'),
-  ('profiles','INSERT','avatar_path,id,nickname,user_code,visibility_owner'),
-  ('profiles','UPDATE','avatar_path,nickname,user_code,visibility_owner'),
+  ('profiles','INSERT','avatar_path,id,nickname,visibility_owner'),
+  ('profiles','UPDATE','avatar_path,nickname,visibility_owner'),
   ('reports','INSERT','comment,reason,reporter_id,target_user_id'),
   ('terms_consents','INSERT','terms_version,user_id');
 grant select on _exp_tbl, _exp_col to public;

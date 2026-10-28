@@ -120,6 +120,37 @@ for t in "$HERE"/tests/[0-9]*.sql; do
   fi
 done
 
+# ---- verify_grants.sql(本番適用後に流す権限確認SQL)が、ローカルの適用結果で全PASSであること ----------------
+if [[ -z "${ONLY:-}" || "verify_grants" == *"$ONLY"* ]]; then
+  out="$WORK/verify_grants.out"
+  "${PSQL[@]}" -d "$DB" -At -F '|' -f "$HERE/verify_grants.sql" >"$out" 2>&1 || true
+  p=$(grep -cE '^C[0-9]+\|PASS\|' "$out" || true); f=$(grep -cE '^C[0-9]+\|(FAIL|WARN)\|' "$out" || true)
+  if [[ $p -eq 0 ]]; then f=$((f + 1)); fi
+  PASS=$((PASS + p)); FAIL=$((FAIL + f))
+  if [[ $f -gt 0 ]]; then
+    printf '  \033[31mFAIL \033[0m %-28s pass=%-4s fail=%s\n' "verify_grants.sql" "$p" "$f"
+    grep -vE '\|PASS\|' "$out" | sed 's/^/        /' | head -n 20
+  else
+    printf '  \033[32mok   \033[0m %-28s pass=%s\n' "verify_grants.sql" "$p"
+  fi
+fi
+
+# ---- 並行実行テスト(L-1: デッドロック再現) -----------------------------------------------
+#   コミット済みのフィクスチャが必要なため、テンプレートからDBを複製して別DBで実行する。
+if [[ -z "${ONLY:-}" || "conc" == *"$ONLY"* || "$ONLY" == *conc* ]]; then
+  out="$WORK/concurrency.out"
+  if bash "$HERE/tests_concurrency/l1_lock_order.sh" "$BIN/psql" "$SOCK" "$DB" >"$out" 2>&1; then rc=0; else rc=$?; fi
+  p=$(grep -c 'WBTEST PASS|' "$out" || true); f=$(grep -c 'WBTEST FAIL|' "$out" || true)
+  PASS=$((PASS + p)); FAIL=$((FAIL + f))
+  if [[ $f -gt 0 || $p -eq 0 ]]; then
+    ERRFILES=$((ERRFILES + (p == 0 ? 1 : 0)))
+    printf '  \033[31mFAIL \033[0m %-28s pass=%-4s fail=%s\n' "concurrency_l1_lock_order" "$p" "$f"
+    grep -v 'WBTEST PASS|' "$out" | sed 's/^.*WBTEST FAIL|/        FAIL: /' | head -n 20
+  else
+    printf '  \033[32mok   \033[0m %-28s pass=%s\n' "concurrency_l1_lock_order" "$p"
+  fi
+fi
+
 echo
 echo "================ 結果: PASS=$PASS  FAIL=$FAIL  ERROR(異常終了ファイル)=$ERRFILES ================"
 [[ $FAIL -eq 0 && $ERRFILES -eq 0 && $PASS -gt 0 ]]

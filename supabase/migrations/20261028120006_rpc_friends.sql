@@ -10,7 +10,11 @@
 --     WB013 この相手には申請できません(拒否済み) / WB014 未承認の申請が多すぎる / WB015 申請が見つかりません
 -- =============================================================================
 
--- 認証済み+プロフィール作成済みを確認し uid を返す(プロフィール行をロックして同一ユーザーの操作を直列化)
+-- 認証済み+プロフィール作成済みを確認し uid を返す(書き込みRPC用)。
+--   プロフィール行を FOR NO KEY UPDATE でロックして同一ユーザーの操作を直列化する。
+--   ※ FOR UPDATE にしない: friendships INSERT の外部キー検査(相手プロフィールへの FOR KEY SHARE)と衝突して、
+--     「AがBを / BがAを」同時に操作したときにデッドロックする(L-1)。NO KEY UPDATE は KEY SHARE と衝突しない。
+--   ※ 行ロックを取るため読み取り専用トランザクションでは失敗する。STABLE な読み取りRPCは current_profile() を使う。
 create function private.require_profile()
 returns uuid
 language plpgsql
@@ -23,13 +27,49 @@ begin
   if v_uid is null then
     raise exception 'ログインが必要です' using errcode = 'WB401';
   end if;
-  perform 1 from public.profiles p where p.id = v_uid for update;
+  perform 1 from public.profiles p where p.id = v_uid for no key update;
   if not found then
     raise exception 'プロフィールを作成してください' using errcode = 'WB402';
   end if;
   return v_uid;
 end $$;
 revoke all on function private.require_profile() from public, anon, authenticated;
+
+-- 読み取り専用RPC用(H-1): ロックなし。認証済み+プロフィール作成済みの確認のみ。
+--   PostgREST は STABLE/IMMUTABLE な関数を GET(= READ ONLY トランザクション)で実行するため、行ロックは取れない。
+create function private.current_profile()
+returns uuid
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then
+    raise exception 'ログインが必要です' using errcode = 'WB401';
+  end if;
+  if not exists (select 1 from public.profiles p where p.id = v_uid) then
+    raise exception 'プロフィールを作成してください' using errcode = 'WB402';
+  end if;
+  return v_uid;
+end $$;
+revoke all on function private.current_profile() from public, anon, authenticated;
+
+-- 2人の関係を扱う処理(QR読み取り/申請)の直列化(L-1)。ペアごとの advisory ロックを least→greatest の順で1つ取る
+--   (ユーザーごとのロックを2本取る方式と違い、取得順の入れ替わりによるデッドロックが原理的に起きない)。
+--   トランザクション終了時に自動解放。
+create function private.lock_pair(a uuid, b uuid)
+returns void
+language sql
+volatile
+set search_path = ''
+as $$
+  select pg_catalog.pg_advisory_xact_lock(
+           pg_catalog.hashtextextended(least(a, b)::text || ':' || greatest(a, b)::text, 20261028))
+$$;
+revoke all on function private.lock_pair(uuid, uuid) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- QR発行(再生成)。旧トークンは即失効(= F2を開いた/自動更新/手動再生成)。
@@ -132,6 +172,9 @@ begin
     raise exception 'このQRコードは使用できません' using errcode = 'WB001';
   end if;
 
+  -- 同じ2人の同時操作(互いにQRを読み合う等)を直列化(L-1)。以降の友達関係の読み取りは先行トランザクションの結果を見る。
+  perform private.lock_pair(v_uid, v_tok.user_id);
+
   select * into v_fs
     from public.friendships f
    where (f.requester_id = v_uid and f.addressee_id = v_tok.user_id)
@@ -140,6 +183,13 @@ begin
 
   if found and v_fs.status = 'accepted' then
     raise exception 'すでに友達です' using errcode = 'WB003';
+  end if;
+
+  -- M-4: 既存行を承認済みに更新できるのは「申請中(pending)」か「QR表示側(トークン所有者)が拒否した(declined)」場合のみ。
+  --      読み取った側が拒否した相手が、QRを見せて拒否を覆すことはできない(非開示の汎用エラー)。
+  if found and not (v_fs.status = 'pending'
+                    or (v_fs.status = 'declined' and v_fs.addressee_id = v_tok.user_id)) then
+    raise exception 'このQRコードは使用できません' using errcode = 'WB001';
   end if;
 
   if (select count(*) from public.qr_scans q
@@ -157,7 +207,7 @@ begin
   end if;
 
   if v_fs.id is not null then
-    -- 申請中(双方向)/拒否済みでも、対面でQRを見せた=相手の意思なので承認済みに更新
+    -- 申請中(双方向)/QR表示側が拒否済み: 対面でQRを見せた=QR表示側の意思なので承認済みに更新
     update public.friendships f
        set status = 'accepted', method = 'qr', responded_at = v_now
      where f.id = v_fs.id;
@@ -206,6 +256,8 @@ begin
   if private.is_blocked_either(p_uid, p_target) then
     raise exception 'コードが見つかりません' using errcode = 'WB011';   -- ブロックを悟らせない
   end if;
+
+  perform private.lock_pair(p_uid, p_target);   -- L-1: 同じ2人の同時操作を直列化
 
   select * into v_fs
     from public.friendships f
@@ -297,20 +349,21 @@ end $$;
 revoke all on function public.request_friend_by_user_code(text) from public, anon;
 grant execute on function public.request_friend_by_user_code(text) to authenticated;
 
--- ID検索(完全一致のみ)。searchable=true かつブロック関係なしの相手の ニックネーム・アイコン のみ返す。
--- 見つからない/検索OFF/ブロックはいずれも0行(区別不可)。
+-- ID検索(完全一致のみ)。searchable=true かつブロック関係なしの相手の ニックネーム と アイコン有無(has_avatar)のみ返す
+-- (アイコンのパスは返さない: L-3。パスを知っても Storage のRLSで読めないが、不必要な情報は渡さない)。
+-- 見つからない/検索OFF/ブロックはいずれも0行(区別不可)。STABLE(読み取り専用トランザクションで動く)。
 create function public.search_user_by_user_code(p_user_code text)
-returns table (nickname text, avatar_path text)
+returns table (nickname text, has_avatar boolean)
 language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
 declare
-  v_uid uuid := private.require_profile();
+  v_uid uuid := private.current_profile();
 begin
   return query
-    select p.nickname, p.avatar_path
+    select p.nickname, (p.avatar_path is not null)
       from public.profiles p
       join public.profile_settings s on s.user_id = p.id and s.searchable
      where p.user_code = lower(btrim(coalesce(p_user_code, '')))
@@ -361,6 +414,7 @@ revoke all on function public.respond_friend_request(uuid, boolean) from public,
 grant execute on function public.respond_friend_request(uuid, boolean) to authenticated;
 
 -- 受信した未承認の申請一覧(申請者の ニックネーム・アイコン 付き。申請者の公開範囲に関わらず返す: 申請した側の意思による)
+-- STABLE(読み取り専用トランザクションで動く)。
 create function public.list_incoming_friend_requests()
 returns table (
   friendship_id    uuid,
@@ -376,7 +430,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_uid uuid := private.require_profile();
+  v_uid uuid := private.current_profile();
 begin
   return query
     select f.id, p.id, p.nickname, p.avatar_path, f.method, f.created_at

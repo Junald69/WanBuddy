@@ -51,7 +51,10 @@ insert into private.app_config (key, value, description) values
   ('presence_planned_grace_minutes',  '60',  '「これから行く」の失効猶予: expires_at=予定時刻+この分数(4.5【提案値】)'),
   ('presence_purge_after_hours',      '24',  '終了/期限切れの在場を物理削除するまでの時間(5.1【提案値】)'),
   ('qr_token_purge_after_hours',      '24',  '期限切れ/失効QRトークンを物理削除するまでの時間(7.1)'),
-  ('qr_scan_log_retention_days',      '7',   'QR読み取りログの保持日数(1日上限の判定には1日以上必要)')
+  ('qr_scan_log_retention_days',      '7',   'QR読み取りログの保持日数(1日上限の判定には1日以上必要)'),
+  ('presence_planned_past_tolerance_minutes', '2', '「これから行く」で過去の予定時刻を許容する分数(端末の時計ずれ・送信遅延の吸収)(4.5【提案値】)'),
+  ('report_daily_limit',              '20',  '通報の1日(JST暦日)あたり上限(1ユーザー)(PRD外・スパム対策の【提案値】)'),
+  ('feedback_daily_limit',            '10',  '意見送信の1日(JST暦日)あたり上限(1ユーザー)(PRD外・スパム対策の【提案値】)')
 on conflict (key) do nothing;
 
 create function private.config_int(p_key text)
@@ -114,3 +117,35 @@ begin
   return v_out;
 end $$;
 revoke all on function private.random_code(integer, text) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- タイムゾーン名が有効か(facilities.timezone の CHECK 用)。
+--   pg_timezone_names に存在する IANA 名のみ true('JST' などの略称・不正な文字列は false)。
+--   CHECK の評価は INSERT/UPDATE した実行ロール(postgres / service_role)で行われるため service_role に EXECUTE を付ける。
+-- ---------------------------------------------------------------------------
+create function private.is_valid_timezone(p_tz text)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select p_tz is not null
+     and exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p_tz)
+$$;
+revoke all on function private.is_valid_timezone(text) from public, anon, authenticated;
+grant execute on function private.is_valid_timezone(text) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 1日あたりの回数カウンタ(通報・意見の上限用)。user_id 単位・JST暦日単位。
+--   匿名意見(feedback.user_id = NULL)でも「誰が送ったか」を本体テーブルに残さずに上限を掛けるため、別テーブルで数える。
+-- ---------------------------------------------------------------------------
+create table private.daily_counters (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  kind    text not null check (kind in ('report', 'feedback')),
+  day     date not null,                      -- JST暦日
+  n       integer not null check (n >= 0),
+  primary key (user_id, kind, day)
+);
+alter table private.daily_counters enable row level security;
+revoke all on table private.daily_counters from public, anon, authenticated;
+create index daily_counters_day_idx on private.daily_counters (day);

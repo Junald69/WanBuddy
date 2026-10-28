@@ -132,6 +132,20 @@ begin
   return null;
 end $$;
 
+-- 実行して成功したら 'ok'、失敗したら SQLSTATE を返す。どちらの場合も副作用は取り消す(サブトランザクションをロールバック)。
+create function tests.try_rollback(p_sql text) returns text
+language plpgsql as $$
+declare v_state text;
+begin
+  begin
+    execute p_sql;
+    raise exception 'tests-rollback' using errcode = 'WBZ99';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+  end;
+  return case when v_state = 'WBZ99' then 'ok' else v_state end;
+end $$;
+
 -- ---- ロール/ユーザー切替 ------------------------------------------------------------
 create function tests.uid(p_name text) returns uuid
 language sql immutable as $$

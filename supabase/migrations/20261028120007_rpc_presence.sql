@@ -4,10 +4,10 @@
 --   時刻は private.app_now() 経由(テストで差し替え可能)。
 --   エラーコード:
 --     WB101 施設が見つからない/無効 / WB102 犬が未指定 / WB103 他人の犬 or 存在しない犬
---     WB104 status不正 / WB105 planned_at 必須/不正 / WB107 犬の数が上限 / WB108 最後の1頭は削除不可
---     WB201 開園時間外 / WB202 エリアが存在しない / WB203 過去時刻 / WB204 先すぎる予定
+--     WB104 status不正 / WB105 planned_at 必須/不正 / WB106 visibility不正 / WB107 犬の数が上限 / WB108 最後の1頭は削除不可
+--     WB201 開園時間外 / WB202 エリアが存在しない / WB203 過去すぎる時刻(許容: 2分) / WB204 先すぎる予定
 --     WB205 閉園時刻を超えて延長不可 / WB206 延長できる状態ではない(planned/終了済み/期限切れ)
---     WB207 在場が見つからない
+--     WB207 在場が見つからない(他人の在場も同じ)
 -- =============================================================================
 
 -- 自分の有効期限切れ在場を完了させる(登録/延長前の整合用。内部専用)
@@ -34,15 +34,18 @@ revoke all on function private.complete_user_expired(uuid, timestamptz) from pub
 --   now    : 現在開園中のみ。expires_at = min(now + presence_now_minutes, 当日の閉園時刻)。
 --            同一ユーザーの有効な now は 'replaced' で終了。同一施設の有効な planned は
 --            同一トランザクションで 'switched_to_now' で終了。
---   planned: planned_at は 現在より後〜24時間以内、かつ開園時間内。
+--   planned: planned_at は「現在 - 許容(既定2分)」以降〜24時間以内、かつ開園時間内。
+--            (端末の時計ずれ・送信遅延で「たった今」の予定が弾かれないように、過去の許容を持たせる)
 --            expires_at = min(planned_at + grace, 閉園時刻)。既存の有効な planned は 'replaced'。
+--   p_visibility: 'friends'(既定。友達にだけ見える) / 'private'(本人のみ)。それ以外は WB106。
 -- ---------------------------------------------------------------------------
 create function public.register_presence(
   p_facility_id uuid,
   p_status      text,
   p_dog_ids     uuid[],
   p_planned_at  timestamptz default null,
-  p_area_code   text default null
+  p_area_code   text default null,
+  p_visibility  text default 'friends'
 )
 returns uuid
 language plpgsql
@@ -62,6 +65,9 @@ declare
 begin
   if p_status is null or p_status not in ('now', 'planned') then
     raise exception 'statusが不正です' using errcode = 'WB104';
+  end if;
+  if p_visibility is null or p_visibility not in ('friends', 'private') then
+    raise exception 'visibilityが不正です' using errcode = 'WB106';
   end if;
 
   select * into v_fac from public.facilities f where f.id = p_facility_id and f.is_active;
@@ -94,8 +100,8 @@ begin
     if p_planned_at is null then
       raise exception '予定時刻を指定してください' using errcode = 'WB105';
     end if;
-    if p_planned_at <= v_now then
-      raise exception '予定時刻は現在より後にしてください' using errcode = 'WB203';
+    if p_planned_at < v_now - make_interval(mins => private.config_int('presence_planned_past_tolerance_minutes')) then
+      raise exception '予定時刻が過去です' using errcode = 'WB203';
     end if;
     if p_planned_at > v_now + make_interval(hours => private.config_int('presence_planned_max_ahead_hours')) then
       raise exception '予定は%時間先までです', private.config_int('presence_planned_max_ahead_hours')
@@ -122,8 +128,8 @@ begin
        set ended_at = v_now, ended_reason = 'replaced'
      where p.user_id = v_uid and p.ended_at is null and p.status = 'now';
 
-    insert into public.presences (user_id, facility_id, area_code, status, started_at, expires_at)
-    values (v_uid, v_fac.id, p_area_code, 'now', v_now, v_expires)
+    insert into public.presences (user_id, facility_id, area_code, status, started_at, expires_at, visibility)
+    values (v_uid, v_fac.id, p_area_code, 'now', v_now, v_expires, p_visibility)
     returning id into v_id;
   else
     v_expires := least(
@@ -134,8 +140,8 @@ begin
        set ended_at = v_now, ended_reason = 'replaced'
      where p.user_id = v_uid and p.ended_at is null and p.status = 'planned';
 
-    insert into public.presences (user_id, facility_id, area_code, status, planned_at, started_at, expires_at)
-    values (v_uid, v_fac.id, p_area_code, 'planned', p_planned_at, v_now, v_expires)
+    insert into public.presences (user_id, facility_id, area_code, status, planned_at, started_at, expires_at, visibility)
+    values (v_uid, v_fac.id, p_area_code, 'planned', p_planned_at, v_now, v_expires, p_visibility)
     returning id into v_id;
   end if;
 
@@ -144,8 +150,53 @@ begin
 
   return v_id;
 end $$;
-revoke all on function public.register_presence(uuid, text, uuid[], timestamptz, text) from public, anon;
-grant execute on function public.register_presence(uuid, text, uuid[], timestamptz, text) to authenticated;
+revoke all on function public.register_presence(uuid, text, uuid[], timestamptz, text, text) from public, anon;
+grant execute on function public.register_presence(uuid, text, uuid[], timestamptz, text, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 在場の犬の変更(M-2)。自分の「有効な(未終了・未失効)」在場のみ。1頭以上・自分の犬のみ。expires_at 等は変更しない。
+--   他人/存在しない在場: WB207 / 終了済み・失効済み: WB206 / 0頭: WB102 / 他人の犬: WB103
+-- ---------------------------------------------------------------------------
+create function public.set_presence_dogs(p_presence_id uuid, p_dog_ids uuid[])
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid  uuid := private.require_profile();
+  v_now  timestamptz := private.app_now();
+  v_p    public.presences%rowtype;
+  v_dogs uuid[];
+begin
+  select * into v_p from public.presences p
+   where p.id = p_presence_id and p.user_id = v_uid for update;
+  if not found then
+    raise exception '在場が見つかりません' using errcode = 'WB207';
+  end if;
+  if v_p.ended_at is not null or v_p.expires_at <= v_now then
+    raise exception '終了した在場は変更できません' using errcode = 'WB206';
+  end if;
+
+  select coalesce(array_agg(distinct x), '{}') into v_dogs
+    from unnest(coalesce(p_dog_ids, '{}')) as t(x) where x is not null;
+  if cardinality(v_dogs) = 0 then
+    raise exception '犬を1頭以上選んでください' using errcode = 'WB102';
+  end if;
+  if (select count(*) from public.dogs d where d.owner_id = v_uid and d.id = any (v_dogs))
+     <> cardinality(v_dogs) then
+    raise exception '自分の犬のみ選べます' using errcode = 'WB103';
+  end if;
+
+  delete from public.presence_dogs pd
+   where pd.presence_id = v_p.id and not (pd.dog_id = any (v_dogs));
+  insert into public.presence_dogs (presence_id, dog_id)
+  select v_p.id, x from unnest(v_dogs) as t(x)
+  on conflict do nothing;
+end $$;
+revoke all on function public.set_presence_dogs(uuid, uuid[]) from public, anon;
+grant execute on function public.set_presence_dogs(uuid, uuid[]) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 延長(now のみ)。expires_at += presence_extend_minutes。ただし閉園時刻を超えない。
@@ -252,7 +303,7 @@ grant execute on function public.complete_expired_presences() to service_role;
 -- 終了から presence_purge_after_hours(既定24h)経過した在場を物理削除(presence_dogs はカスケード)。
 -- あわせて失効/期限切れQR・古いQR読み取りログも削除。
 create function public.purge_old_presence_data()
-returns table (presences_deleted integer, qr_tokens_deleted integer, qr_scans_deleted integer)
+returns table (presences_deleted integer, qr_tokens_deleted integer, qr_scans_deleted integer, counters_deleted integer)
 language plpgsql
 volatile
 security definer
@@ -263,6 +314,7 @@ declare
   v_a integer;
   v_b integer;
   v_c integer;
+  v_d integer;
 begin
   perform public.complete_expired_presences();
 
@@ -280,7 +332,12 @@ begin
    where q.scanned_at < v_now - make_interval(days => private.config_int('qr_scan_log_retention_days'));
   get diagnostics v_c = row_count;
 
-  return query select v_a, v_b, v_c;
+  -- 1日上限カウンタ(通報/意見)は前日以前の分を削除(判定に必要なのは当日分のみ)
+  delete from private.daily_counters c
+   where c.day < (v_now at time zone 'Asia/Tokyo')::date - 1;
+  get diagnostics v_d = row_count;
+
+  return query select v_a, v_b, v_c, v_d;
 end $$;
 revoke all on function public.purge_old_presence_data() from public, anon, authenticated;
 grant execute on function public.purge_old_presence_data() to service_role;

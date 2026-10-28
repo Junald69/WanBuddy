@@ -87,8 +87,13 @@ select tests.eq('再終了しても ended_reason / ended_at は変わらない',
 select tests.set_now_jst('2026-10-28 12:00');
 select tests.become('p');
 select tests.eq('planned: planned_at 未指定は拒否 WB105', tests.errstate(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[])', :'fid', tests.dog_uid('p', 1))), 'WB105');
-select tests.eq('planned: 過去時刻は拒否 WB203', tests.errstate(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[], %L)', :'fid', tests.dog_uid('p', 1), tests.jst('2026-10-28 11:59'))), 'WB203');
-select tests.eq('planned: 現在時刻ちょうども拒否 WB203', tests.errstate(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[], %L)', :'fid', tests.dog_uid('p', 1), tests.jst('2026-10-28 12:00'))), 'WB203');
+-- 過去の予定時刻は 2分まで許容(端末の時計ずれ・送信遅延の吸収)。境界: 現在-2分ちょうどはOK、それより前は WB203
+select tests.eq('planned: 3分前は拒否 WB203', tests.errstate(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[], %L)', :'fid', tests.dog_uid('p', 1), tests.jst('2026-10-28 11:57'))), 'WB203');
+select tests.eq('planned: 2分1秒前は拒否 WB203', tests.errstate(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[], %L)', :'fid', tests.dog_uid('p', 1), (tests.jst('2026-10-28 11:58') - interval '1 second'))), 'WB203');
+select tests.eq('planned: 1時間前は拒否 WB203', tests.errstate(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[], %L)', :'fid', tests.dog_uid('p', 1), tests.jst('2026-10-28 11:00'))), 'WB203');
+select tests.eq('planned: ちょうど2分前(11:58)は許容', tests.try_rollback(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[], %L)', :'fid', tests.dog_uid('p', 1), tests.jst('2026-10-28 11:58'))), 'ok');
+select tests.eq('planned: 1分前(11:59)は許容', tests.try_rollback(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[], %L)', :'fid', tests.dog_uid('p', 1), tests.jst('2026-10-28 11:59'))), 'ok');
+select tests.eq('planned: 現在時刻ちょうども許容', tests.try_rollback(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[], %L)', :'fid', tests.dog_uid('p', 1), tests.jst('2026-10-28 12:00'))), 'ok');
 select tests.eq('planned: 24時間より先は拒否 WB204', tests.errstate(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[], %L)', :'fid', tests.dog_uid('p', 1), tests.jst('2026-10-29 12:01'))), 'WB204');
 select tests.eq('planned: 開園前(翌5:00)は拒否 WB201', tests.errstate(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[], %L)', :'fid', tests.dog_uid('p', 1), tests.jst('2026-10-29 05:00'))), 'WB201');
 select tests.eq('planned: 閉園後(21:30)は拒否 WB201', tests.errstate(format('select public.register_presence(%L, ''planned'', array[%L]::uuid[], %L)', :'fid', tests.dog_uid('p', 1), tests.jst('2026-10-28 21:30'))), 'WB201');

@@ -150,16 +150,51 @@ select tests.eq('全頭が非公開の在場: 在場は見え犬は0頭',
   (select jsonb_array_length(dogs)::bigint from public.presence_board where presence_id = tests.dog_uid('allpriv', 100)), 0::bigint);
 select tests.become_super();
 
--- プロフィール非公開(private)の友達の在場: 在場は見えるが nickname は NULL(プロフィールは can_view で不可)
+-- M-3: プロフィール非公開(private)でも、友達(accepted)にはニックネームだけは見える(PRD 4.4)。
+--   在場ボード / my_friends の nickname は友達に返す。avatar_path や profiles 本体は私的なまま(NULL/見えない)。
 select tests.mkuser('privprof', 'private', 'friends');
+update public.profiles set avatar_path = tests.uid('privprof')::text || '/a.jpg' where id = tests.uid('privprof');
 select tests.befriend('friend', 'privprof');
 insert into public.presences (id, user_id, facility_id, status, started_at, expires_at)
 values (tests.dog_uid('privprof', 100), tests.uid('privprof'), tests.facility(), 'now', now(), now() + interval '2 hours');
 insert into public.presence_dogs values (tests.dog_uid('privprof', 100), tests.dog_uid('privprof', 1));
 select tests.become('friend');
-select tests.ok('プロフィール非公開の友達: 在場は見えるが nickname は NULL',
-  (select nickname is null and user_id = tests.uid('privprof') from public.presence_board
+select tests.ok('M-3 プロフィール非公開の友達: 在場ボードに nickname が出る',
+  (select nickname = 'privprof' and user_id = tests.uid('privprof') from public.presence_board
     where presence_id = tests.dog_uid('privprof', 100)));
+select tests.ok('M-3 プロフィール非公開の友達: avatar_path は出ない(NULL)',
+  (select avatar_path is null from public.presence_board where presence_id = tests.dog_uid('privprof', 100)));
+select tests.ok('M-3 プロフィール非公開の友達: my_friends に nickname が出る・avatar_path は NULL',
+  (select nickname = 'privprof' and avatar_path is null from public.my_friends
+    where friend_id = tests.uid('privprof')));
+select tests.eq('M-3 プロフィール本体(profiles)は友達にも見えないまま', tests.cnt('select 1 from public.profiles where id = tests.uid(''privprof'')'), 0::bigint);
+select tests.eq('M-3 private.display_name: 友達(非公開プロフィール)は名前を返す', private.display_name(tests.uid('privprof')), 'privprof');
+-- 非友達: 非公開プロフィールの名前は見えない / 公開プロフィールの名前は見える
+select tests.become('stranger');
+select tests.ok('M-3 非友達: 非公開プロフィールの display_name は NULL', private.display_name(tests.uid('privprof')) is null);
+select tests.eq('M-3 非友達: 公開プロフィールの display_name は名前', private.display_name(tests.uid('o_public')), 'o_public');
+select tests.ok('M-3 非友達: 在場ボードに非公開の友達の行は出ない', not exists (select 1 from public.presence_board where user_id = tests.uid('privprof')));
+select tests.ok('M-3 非友達: my_friends は空', not exists (select 1 from public.my_friends));
+-- ブロック関係(友達行が残っている不整合状態でも名前を出さない)
+select tests.become_super();
+select tests.mkuser('blk_a', 'private', 'friends');
+select tests.mkuser('blk_b', 'private', 'friends');
+select tests.block('blk_a', 'blk_b');
+select tests.befriend('blk_a', 'blk_b');   -- ブロック後に友達行が(何らかの経緯で)存在してしまったと仮定
+insert into public.presences (id, user_id, facility_id, status, started_at, expires_at)
+values (tests.dog_uid('blk_b', 100), tests.uid('blk_b'), tests.facility(), 'now', now(), now() + interval '2 hours');
+insert into public.presence_dogs values (tests.dog_uid('blk_b', 100), tests.dog_uid('blk_b', 1));
+select tests.become('blk_a');
+select tests.ok('M-3 ブロックした側: 友達行が残っていても nickname は NULL', (select nickname is null from public.my_friends where friend_id = tests.uid('blk_b')));
+select tests.ok('M-3 ブロックした側: 在場ボードに相手は出ない', not exists (select 1 from public.presence_board where user_id = tests.uid('blk_b')));
+select tests.ok('M-3 ブロックした側: display_name は NULL', private.display_name(tests.uid('blk_b')) is null);
+select tests.become('blk_b');
+select tests.ok('M-3 ブロックされた側: 友達行が残っていても nickname は NULL', (select nickname is null from public.my_friends where friend_id = tests.uid('blk_a')));
+select tests.ok('M-3 ブロックされた側: display_name は NULL', private.display_name(tests.uid('blk_a')) is null);
+select tests.become_super();
+-- 未ログイン相当(sub無し)では NULL
+select tests.become_authenticated_no_sub();
+select tests.ok('M-3 sub無しの display_name は NULL', private.display_name(tests.uid('privprof')) is null);
 select tests.become_super();
 
 -- 期限切れ/終了した在場は他人には見えない(本人には履歴として見える)

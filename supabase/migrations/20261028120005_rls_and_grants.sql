@@ -34,8 +34,9 @@ grant all on all tables in schema public to service_role;
 -- profiles
 -- ---------------------------------------------------------------------------
 grant select on public.profiles to authenticated;
-grant insert (id, nickname, avatar_path, user_code, visibility_owner) on public.profiles to authenticated;
-grant update (nickname, avatar_path, user_code, visibility_owner) on public.profiles to authenticated;
+-- user_code は自動生成のみ(トリガー)。INSERT/UPDATE とも列GRANTを与えない=クライアントは指定も変更もできない。
+grant insert (id, nickname, avatar_path, visibility_owner) on public.profiles to authenticated;
+grant update (nickname, avatar_path, visibility_owner) on public.profiles to authenticated;
 -- DELETE は付与しない(退会は Edge Function(service_role)で auth.users ごと削除)
 
 create policy profiles_select on public.profiles

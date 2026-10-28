@@ -18,11 +18,17 @@ select tests.ok('profile_settings が自動作成され招待コードは10文�
 select tests.ok('既定: visibility_owner=friends / searchable=false / accept_qr=true',
   (select visibility_owner = 'friends' from public.profiles where id = tests.uid('u3'))
   and (select not searchable and accept_qr from public.profile_settings));
+select tests.throws('L-2 プロフィール作成: user_code を指定した INSERT は列権限で拒否',
+  format('insert into public.profiles (id, nickname, user_code) values (%L, ''x'', ''chosen_code'')', tests.uid('u3')), '42501');
 select tests.throws('プロフィール作成: 他人のIDでは作成不可(RLS)',
   format('insert into public.profiles (id, nickname) values (%L, ''x'')', tests.uid('u1')), '42501');
 select tests.become_super();
 
 select user_code as u2code from public.profiles where id = tests.uid('u2') \gset
+-- user_code 自体の制約(DB側。service_role/運営SQL経由でも守られる)
+select tests.throws('profiles: user_code 形式違反はDB制約で拒否(23514)', format('update public.profiles set user_code = ''A!'' where id = %L', tests.uid('u1')), '23514');
+select tests.throws('profiles: user_code 重複はDB制約で拒否(23505)',
+  format('update public.profiles set user_code = %L where id = %L', :'u2code', tests.uid('u1')), '23505');
 select tests.become('u1');
 select tests.eq('他人のプロフィールの UPDATE は 0行(RLSで見えない/更新不可)',
   tests.affected('update public.profiles set nickname = ''hack'' where id = tests.uid(''u2'')'), 0::bigint);
@@ -30,9 +36,15 @@ select tests.throws('profiles: id の更新は列権限で拒否', format('updat
 select tests.throws('profiles: created_at の更新は列権限で拒否', format('update public.profiles set created_at = now() where id = %L', tests.uid('u1')), '42501');
 select tests.throws('profiles: DELETE は権限なし', 'delete from public.profiles', '42501');
 select tests.throws('profiles: ニックネーム空は拒否', format('update public.profiles set nickname = '''' where id = %L', tests.uid('u1')), '23514');
-select tests.throws('profiles: user_code 形式違反は拒否', format('update public.profiles set user_code = ''A!'' where id = %L', tests.uid('u1')), '23514');
-select tests.throws('profiles: 他人の user_code と重複は拒否(23505)',
-  format('update public.profiles set user_code = %L where id = %L', :'u2code', tests.uid('u1')), '23505');
+-- L-2: user_code は自動生成のみ(クライアントは指定も変更もできない)
+select tests.throws('L-2 profiles: user_code の UPDATE は列権限で拒否(自分の行でも)',
+  format('update public.profiles set user_code = ''mycode123'' where id = %L', tests.uid('u1')), '42501');
+select tests.throws('L-2 profiles: user_code の UPDATE は拒否(他人のIDと重複させる試みも権限エラー)',
+  format('update public.profiles set user_code = %L where id = %L', :'u2code', tests.uid('u1')), '42501');
+select tests.ok('L-2 列権限: authenticated は profiles.user_code に INSERT/UPDATE 権限なし(SELECTのみ)',
+  not has_column_privilege('authenticated', 'public.profiles', 'user_code', 'insert')
+  and not has_column_privilege('authenticated', 'public.profiles', 'user_code', 'update')
+  and has_column_privilege('authenticated', 'public.profiles', 'user_code', 'select'));
 select tests.throws('profiles: avatar_path が他人のフォルダは拒否(RLS)',
   format('update public.profiles set avatar_path = %L where id = %L', tests.uid('u2')::text || '/a.jpg', tests.uid('u1')), '42501');
 select tests.lives('profiles: avatar_path が自分のフォルダならOK',

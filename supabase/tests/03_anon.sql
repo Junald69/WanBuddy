@@ -48,6 +48,12 @@ select tests.throws('anon: issue_qr_token() 呼び出し拒否', 'select * from 
 select tests.throws('anon: redeem_qr_token 呼び出し拒否', 'select * from public.redeem_qr_token(''aaaaaaaaaaaaaaaaaaaaaaaa'')', '42501');
 select tests.throws('anon: register_presence 呼び出し拒否', format('select public.register_presence(%L, ''now'', array[%L]::uuid[])', (:'fid'), tests.dog_uid('bob', 1)), '42501');
 select tests.throws('anon: private.can_view 呼び出し拒否', format('select private.can_view(%L, %L, ''public'')', tests.uid('bob'), tests.uid('alice')), '42501');
+select tests.throws('anon: set_presence_dogs 呼び出し拒否', format('select public.set_presence_dogs(%L, array[%L]::uuid[])', gen_random_uuid(), tests.dog_uid('bob', 1)), '42501');
+select tests.throws('anon: search_user_by_user_code 呼び出し拒否', 'select * from public.search_user_by_user_code(''abc'')', '42501');
+select tests.throws('anon: list_incoming_friend_requests 呼び出し拒否', 'select * from public.list_incoming_friend_requests()', '42501');
+select tests.throws('anon: private.display_name 呼び出し拒否', format('select private.display_name(%L)', tests.uid('bob')), '42501');
+select tests.throws('anon: private.current_profile 呼び出し拒否', 'select private.current_profile()', '42501');
+select tests.throws('anon: private.daily_counters 参照拒否', 'select * from private.daily_counters', '42501');
 select tests.throws('anon: private.app_now 呼び出し拒否', 'select private.app_now()', '42501');
 select tests.throws('anon: private.app_config 参照拒否', 'select * from private.app_config', '42501');
 select tests.throws('anon: complete_expired_presences 呼び出し拒否', 'select public.complete_expired_presences()', '42501');

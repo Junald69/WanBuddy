@@ -4,7 +4,7 @@
 --   (トリガー実行に EXECUTE 権限は不要)。
 -- =============================================================================
 
--- ---- profiles: user_code 自動生成/正規化, updated_at -------------------------------
+-- ---- profiles: user_code 自動生成(クライアントは指定不可。列GRANTなし)/正規化, updated_at -------------------------------
 create function private.trg_profiles_before()
 returns trigger
 language plpgsql
@@ -78,7 +78,7 @@ declare
   v_count integer;
 begin
   -- 同時INSERTによる上限超過(競合)を防ぐため、所有者のプロフィール行をロックして直列化
-  perform 1 from public.profiles p where p.id = new.owner_id for update;
+  perform 1 from public.profiles p where p.id = new.owner_id for no key update;
   select count(*) into v_count from public.dogs d where d.owner_id = new.owner_id;
   if v_count >= private.config_int('max_dogs_per_user') then
     raise exception '登録できる犬は最大%頭までです', private.config_int('max_dogs_per_user')
@@ -107,7 +107,7 @@ begin
     return old;
   end if;
 
-  perform 1 from public.profiles p where p.id = old.owner_id for update;
+  perform 1 from public.profiles p where p.id = old.owner_id for no key update;
 
   if not exists (
     select 1 from public.dogs d where d.owner_id = old.owner_id and d.id <> old.id
@@ -190,3 +190,49 @@ revoke all on function private.trg_touch_updated_at() from public, anon, authent
 create trigger dog_instagram_touch
   before update on public.dog_instagram
   for each row execute function private.trg_touch_updated_at();
+
+-- ---- reports / feedback: 1日あたりの送信上限(スパム・嫌がらせ対策。【提案値】 report 20 / feedback 10)--------
+--   JST暦日 × ユーザー単位。private.daily_counters を原子的に加算(同時送信でも上限を超えない)。
+--   呼び出し元(auth.uid())基準 = 匿名意見(user_id NULL)でも送信者単位で制限できる。
+--   auth.uid() が無い実行(service_role / 運営のSQL)は制限しない。
+--   created_at はクライアントから指定不可(列GRANTなし)のため、時刻関数 app_now() で上書き(JST暦日の判定と一致させる)。
+create function private.trg_daily_limit()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid   uuid := auth.uid();
+  v_kind  text := tg_argv[0];      -- 'report' | 'feedback'
+  v_limit integer;
+  v_now   timestamptz := private.app_now();
+  v_n     integer;
+begin
+  new.created_at := v_now;
+  if v_uid is null then
+    return new;
+  end if;
+  v_limit := private.config_int(case v_kind when 'report' then 'report_daily_limit' else 'feedback_daily_limit' end);
+
+  insert into private.daily_counters as c (user_id, kind, day, n)
+  values (v_uid, v_kind, (v_now at time zone 'Asia/Tokyo')::date, 1)
+  on conflict (user_id, kind, day) do update set n = c.n + 1 where c.n < v_limit;
+  get diagnostics v_n = row_count;
+  if v_n = 0 then
+    if v_kind = 'report' then
+      raise exception '本日の通報の上限(%件)に達しました', v_limit using errcode = 'WB301';
+    else
+      raise exception '本日の意見送信の上限(%件)に達しました', v_limit using errcode = 'WB302';
+    end if;
+  end if;
+  return new;
+end $$;
+revoke all on function private.trg_daily_limit() from public, anon, authenticated;
+
+create trigger reports_daily_limit
+  before insert on public.reports
+  for each row execute function private.trg_daily_limit('report');
+create trigger feedback_daily_limit
+  before insert on public.feedback
+  for each row execute function private.trg_daily_limit('feedback');

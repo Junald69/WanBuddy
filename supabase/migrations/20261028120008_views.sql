@@ -4,12 +4,13 @@
 --   anon には付与しない。
 -- =============================================================================
 
--- 友達一覧(accepted)。相手のプロフィールが見えない(非公開)場合も行は返し、nickname 等は NULL。
+-- 友達一覧(accepted)。nickname は 相手のプロフィールが非公開でも返す(友達なので。private.display_name)。
+--   avatar_path は profiles のRLSのまま(相手のプロフィールが見えない場合は NULL)。
 create view public.my_friends
 with (security_invoker = true) as
 select f.id as friendship_id,
        case when f.requester_id = (select auth.uid()) then f.addressee_id else f.requester_id end as friend_id,
-       p.nickname,
+       private.display_name(case when f.requester_id = (select auth.uid()) then f.addressee_id else f.requester_id end) as nickname,
        p.avatar_path,
        f.method,
        f.responded_at as friends_since
@@ -30,7 +31,7 @@ select pr.id as presence_id,
        pr.started_at,
        pr.expires_at,
        pr.user_id,
-       p.nickname,
+       private.display_name(pr.user_id) as nickname,   -- 友達なら相手のプロフィールが非公開でも名前は出す(M-3)
        p.avatar_path,
        coalesce(dg.dogs, '[]'::jsonb) as dogs
   from public.presences pr

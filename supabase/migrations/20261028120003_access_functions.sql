@@ -92,6 +92,39 @@ end $$;
 revoke all on function private.can_view(uuid, uuid, text) from public, anon;
 grant execute on function private.can_view(uuid, uuid, text) to authenticated, service_role;
 
+-- 表示名(ニックネーム)の取得(M-3)。ビュー(my_friends / presence_board)から呼ぶ。
+--   プロフィールが非公開(visibility_owner='private')でも、「友達(accepted・ブロック関係なし)」には
+--   ニックネームだけは見せる(PRD 4.4「全頭が見えない場合は飼い主名のみ」)。アイコン等の他の項目は profiles のRLSのまま。
+--   返すのは 本人 / 友達 / プロフィールが公開範囲で見える相手(public) のみ。それ以外(他人・ブロック関係)は NULL。
+--   引数は対象ユーザーのみ(視点は常に auth.uid())→ 他人の視点での探索はできない。
+create function private.display_name(p_owner uuid)
+returns text
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_caller uuid := auth.uid();
+  v_name   text;
+  v_vis    text;
+begin
+  if v_caller is null or p_owner is null then
+    return null;
+  end if;
+  select p.nickname, p.visibility_owner into v_name, v_vis
+    from public.profiles p where p.id = p_owner;
+  if not found then
+    return null;
+  end if;
+  if v_caller = p_owner or private.is_friend(v_caller, p_owner) or private.can_view(v_caller, p_owner, v_vis) then
+    return v_name;
+  end if;
+  return null;
+end $$;
+revoke all on function private.display_name(uuid) from public, anon;
+grant execute on function private.display_name(uuid) to authenticated, service_role;
+
 -- 友達数(accepted。双方向)。内部専用。
 create function private.friend_count(p_uid uuid)
 returns integer

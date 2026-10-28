@@ -23,7 +23,7 @@ create table public.profiles (
   updated_at       timestamptz not null default now()
 );
 comment on table public.profiles is '飼い主プロフィール。他ユーザーへの表示は visibility_owner と can_view() で制御';
-comment on column public.profiles.user_code is 'ユーザーID(完全一致検索用)。小文字英数と_、4〜20文字。未指定ならトリガーで自動生成';
+comment on column public.profiles.user_code is 'ユーザーID(完全一致検索用)。小文字英数と_、4〜20文字。トリガーで自動生成のみ(クライアントは指定も変更も不可: 列GRANTなし)';
 
 -- 本人専用の設定(他ユーザーには絶対に見せない)
 create table public.profile_settings (
@@ -94,7 +94,8 @@ create table public.facilities (
   address               text,
   open_time             time not null,
   close_time            time not null,
-  timezone              text not null default 'Asia/Tokyo',
+  timezone              text not null default 'Asia/Tokyo'
+                          check (private.is_valid_timezone(timezone)),   -- 不正なTZだと在場の営業時間判定が壊れるため
   fee_note              text,
   registration_required boolean not null default false,
   registration_note     text,
@@ -143,6 +144,8 @@ create index presences_facility_active_idx
   on public.presences (facility_id, expires_at) where ended_at is null;
 create index presences_ended_idx on public.presences (ended_at) where ended_at is not null;
 create index presences_expires_idx on public.presences (expires_at);
+create index presences_user_idx on public.presences (user_id, started_at);   -- FK(部分インデックスはFKの検索に使えない)
+create index presences_area_fk_idx on public.presences (facility_id, area_code);  -- 複合FK(施設+エリア)
 
 create table public.presence_dogs (
   presence_id uuid not null references public.presences (id) on delete cascade,
@@ -162,6 +165,7 @@ create table public.qr_tokens (
   revoked_at timestamptz,
   created_at timestamptz not null default now()
 );
+create index qr_tokens_user_idx on public.qr_tokens (user_id);                              -- FK
 create index qr_tokens_user_active_idx on public.qr_tokens (user_id) where revoked_at is null;
 create index qr_tokens_expires_idx on public.qr_tokens (expires_at);
 
@@ -173,6 +177,8 @@ create table public.qr_scans (
   scanned_at timestamptz not null
 );
 create index qr_scans_scanner_idx on public.qr_scans (scanner_id, scanned_at);
+create index qr_scans_owner_idx on public.qr_scans (owner_id);     -- FK(退会カスケード時の全表走査を避ける)
+create index qr_scans_token_idx on public.qr_scans (token_id);
 
 -- ---- 通報・意見・同意 -----------------------------------------------------------
 create table public.reports (
@@ -185,6 +191,8 @@ create table public.reports (
   created_at     timestamptz not null default now(),
   check (reporter_id is distinct from target_user_id)
 );
+create index reports_reporter_idx on public.reports (reporter_id);   -- FK
+create index reports_target_idx on public.reports (target_user_id);  -- FK
 
 create table public.feedback (
   id         uuid primary key default gen_random_uuid(),
@@ -193,6 +201,7 @@ create table public.feedback (
   body       text not null check (char_length(body) between 1 and 1000),
   created_at timestamptz not null default now()
 );
+create index feedback_user_idx on public.feedback (user_id);        -- FK
 
 create table public.terms_consents (
   user_id       uuid not null references auth.users (id) on delete cascade,

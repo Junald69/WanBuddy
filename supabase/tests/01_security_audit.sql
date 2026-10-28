@@ -91,13 +91,14 @@ select tests.ok('authenticatedが実行できる public/private 関数は許可�
     where n.nspname in ('public', 'private')
       and has_function_privilege('authenticated', p.oid, 'execute'))
   = array[
-    'private.app_now', 'private.can_view', 'private.is_friend',
+    'private.app_now', 'private.can_view', 'private.display_name', 'private.is_friend',
     'private.storage_can_read_avatar', 'private.storage_can_read_dog_photo',
     'private.storage_is_own_dog_folder', 'private.storage_path_uuid',
     'public.end_presence', 'public.extend_presence', 'public.issue_qr_token',
     'public.list_incoming_friend_requests', 'public.redeem_qr_token', 'public.regenerate_invite_code',
     'public.register_presence', 'public.request_friend_by_invite_code', 'public.request_friend_by_user_code',
-    'public.respond_friend_request', 'public.revoke_qr_tokens', 'public.search_user_by_user_code'
+    'public.respond_friend_request', 'public.revoke_qr_tokens', 'public.search_user_by_user_code',
+    'public.set_presence_dogs'
   ]);
 
 select tests.ok('メンテナンス関数は service_role のみ実行可',
@@ -105,6 +106,25 @@ select tests.ok('メンテナンス関数は service_role のみ実行可',
   and has_function_privilege('service_role', 'public.purge_old_presence_data()', 'execute')
   and not has_function_privilege('authenticated', 'public.complete_expired_presences()', 'execute')
   and not has_function_privilege('authenticated', 'public.purge_old_presence_data()', 'execute'));
+
+select tests.ok('内部関数(require_profile/current_profile/lock_pair/config_int等)は authenticated・anon が実行不可',
+  not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'private'
+       and p.proname in ('require_profile', 'current_profile', 'lock_pair', 'config_int', 'is_blocked_either',
+                         'friend_count', 'random_code', 'is_valid_timezone', 'trg_daily_limit', 'complete_user_expired')
+       and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))
+  ));
+
+select tests.ok('private.is_valid_timezone は service_role のみ(facilities CHECK 用)',
+  has_function_privilege('service_role', 'private.is_valid_timezone(text)', 'execute')
+  and not has_function_privilege('authenticated', 'private.is_valid_timezone(text)', 'execute')
+  and not has_function_privilege('anon', 'private.is_valid_timezone(text)', 'execute'));
+
+select tests.ok('private.daily_counters: RLS有効・authenticated/anon 権限なし',
+  (select relrowsecurity from pg_class where oid = 'private.daily_counters'::regclass)
+  and not has_any_column_privilege('authenticated', 'private.daily_counters'::regclass, 'select,insert,update')
+  and not has_any_column_privilege('anon', 'private.daily_counters'::regclass, 'select,insert,update'));
 
 -- 7) ビューは security_invoker
 select tests.ok('public のビューは全て security_invoker=true(' || count(*) || '個)',
@@ -144,7 +164,8 @@ select tests.ok('Storageバケットは avatars / dog-photos とも private',
 -- 11) 定数(サーバー側設定)
 select tests.ok('定数 ' || k || ' が設定済み', exists (select 1 from private.app_config where key = k))
 from unnest(array['max_dogs_per_user','qr_ttl_minutes','qr_max_uses','qr_daily_scan_limit','max_friends',
-                  'presence_now_minutes','presence_extend_minutes','presence_purge_after_hours']) k;
+                  'presence_now_minutes','presence_extend_minutes','presence_purge_after_hours',
+                  'presence_planned_past_tolerance_minutes','report_daily_limit','feedback_daily_limit']) k;
 
 -- 12) 新規オブジェクトのデフォルト権限(Supabaseが自動付与する anon/authenticated を除去済み)
 create table public.zz_default_priv_probe (id int);
