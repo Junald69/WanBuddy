@@ -114,4 +114,139 @@ SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG DEV_LOGIN
 EOF
 expect_fail "Beta defines DEBUG" --configuration Beta --xcconfig "${TMP}/Beta.xcconfig"
 
+printf '%s\n' \
+  '#include "Common.xcconfig"' \
+  'PRODUCT_BUNDLE_IDENTIFIER = $(PRODUCT_BUNDLE_IDENTIFIER_BASE)' \
+  'SUPABASE_PROJECT_REF = abcdefghijklmnopqrst' \
+  'SUPABASE_URL = https:/$()/abcdefghijklmnopqrst.supabase.co' \
+  'SUPABASE_PUBLISHABLE_KEY = sb_publishable_example' \
+  "$(printf 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = RELEASE\tDEV_LOGIN')" \
+  > "${TMP}/ReleaseTab.xcconfig"
+expect_fail "xcconfig Release tab-separated DEV_LOGIN" --configuration Release --xcconfig "${TMP}/ReleaseTab.xcconfig"
+
+cat > "${TMP}/ReleaseFlags.xcconfig" <<'EOF'
+#include "Common.xcconfig"
+PRODUCT_BUNDLE_IDENTIFIER = $(PRODUCT_BUNDLE_IDENTIFIER_BASE)
+SUPABASE_PROJECT_REF = abcdefghijklmnopqrst
+SUPABASE_URL = https:/$()/abcdefghijklmnopqrst.supabase.co
+SUPABASE_PUBLISHABLE_KEY = sb_publishable_example
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = RELEASE
+OTHER_SWIFT_FLAGS = -DDEV_LOGIN
+EOF
+expect_fail "xcconfig Release -DDEV_LOGIN" --configuration Release --xcconfig "${TMP}/ReleaseFlags.xcconfig"
+
+expect_ok_env() {
+  name=$1
+  shift
+  if env -i PATH="${PATH}" "$@" bash "${CHECK}" >"${TMP}/out" 2>"${TMP}/err"; then
+    pass "${name}"
+  else
+    echo "FAIL ${name}: expected exit 0" >&2
+    cat "${TMP}/out" "${TMP}/err" >&2
+    exit 1
+  fi
+}
+
+expect_fail_env() {
+  name=$1
+  shift
+  if env -i PATH="${PATH}" "$@" bash "${CHECK}" >"${TMP}/out" 2>"${TMP}/err"; then
+    echo "FAIL ${name}: expected non-zero exit" >&2
+    cat "${TMP}/out" >&2
+    exit 1
+  fi
+  if ! grep -q "check_env: FAIL" "${TMP}/out"; then
+    echo "FAIL ${name}: missing check_env: FAIL marker" >&2
+    cat "${TMP}/out" "${TMP}/err" >&2
+    exit 1
+  fi
+  pass "${name}"
+}
+
+DEV_REF_VALUE="nlvjvmymeuvbxlzikpjx"
+DEV_URL_VALUE="https://${DEV_REF_VALUE}.supabase.co"
+DEV_KEY_VALUE="sb_publishable_rhef8TN72C7vSi6itEHl_g__VXiEkhN"
+BASE_VALUE="com.junald69.wanbuddy"
+
+expect_fail_env "env empty Release" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE
+
+expect_fail_env "env Release with Development ref" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  SUPABASE_PROJECT_REF="${DEV_REF_VALUE}" \
+  SUPABASE_URL="${DEV_URL_VALUE}" \
+  SUPABASE_PUBLISHABLE_KEY="${DEV_KEY_VALUE}"
+
+expect_ok_env "env Debug" \
+  CONFIGURATION=Debug \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}.dev" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS="DEBUG DEV_LOGIN" \
+  SUPABASE_PROJECT_REF="${DEV_REF_VALUE}" \
+  SUPABASE_URL="${DEV_URL_VALUE}" \
+  SUPABASE_PUBLISHABLE_KEY="${DEV_KEY_VALUE}"
+
+expect_ok_env "env Beta" \
+  CONFIGURATION=Beta \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}.beta" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS="BETA DEV_LOGIN" \
+  SUPABASE_PROJECT_REF="${DEV_REF_VALUE}" \
+  SUPABASE_URL="${DEV_URL_VALUE}" \
+  SUPABASE_PUBLISHABLE_KEY="${DEV_KEY_VALUE}"
+
+expect_ok_env "env valid Release" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
+expect_fail_env "env Release OTHER_SWIFT_FLAGS -DDEV_LOGIN" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  OTHER_SWIFT_FLAGS=-DDEV_LOGIN \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
+expect_fail_env "env Release OTHER_SWIFT_FLAGS -D DEBUG" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  OTHER_SWIFT_FLAGS="-D DEBUG" \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
+expect_fail_env "env Release tab-separated DEV_LOGIN" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS="$(printf 'RELEASE\tDEV_LOGIN')" \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
+expect_fail_env "env Release tab before -DDEV_LOGIN" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  OTHER_SWIFT_FLAGS="$(printf '\t-DDEV_LOGIN')" \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
 echo "check_env tests passed"

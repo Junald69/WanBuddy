@@ -28,16 +28,16 @@ settings:
     DEVELOPMENT_TEAM: ""
     ENABLE_USER_SCRIPT_SANDBOXING: "NO"
     ASSETCATALOG_COMPILER_APPICON_NAME: ""
+  # XcodeGen's debug preset writes SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG
+  # into the project, which would hide the xcconfig. Inherit so the xcconfig
+  # files stay the only place those flags and bundle ids are defined.
   configs:
     Debug:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG DEV_LOGIN
-      PRODUCT_BUNDLE_IDENTIFIER: $(PRODUCT_BUNDLE_IDENTIFIER_BASE).dev
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited)"
     Beta:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: BETA DEV_LOGIN
-      PRODUCT_BUNDLE_IDENTIFIER: $(PRODUCT_BUNDLE_IDENTIFIER_BASE).beta
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited)"
     Release:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: RELEASE
-      PRODUCT_BUNDLE_IDENTIFIER: $(PRODUCT_BUNDLE_IDENTIFIER_BASE)
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited)"
 
 packages:
   WanBuddyCore:

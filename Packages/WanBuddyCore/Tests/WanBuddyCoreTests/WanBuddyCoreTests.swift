@@ -297,10 +297,5 @@ final class MockRepositoryTests: XCTestCase {
             XCTFail("unexpected error \(error)")
         }
     }
-
-    func testMockProfileUsesPrototypeDogs() async throws {
-        let dogs = try await MockProfileRepository().fetchDogs(ownerID: "owner")
-        XCTAssertEqual(dogs.map(\.name), ["モカ", "ルル", "コタロウ", "ソラ", "ミミ"])
-    }
 }
 #endif

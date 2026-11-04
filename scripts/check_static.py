@@ -60,12 +60,16 @@ for needle in (
     "../Packages/WanBuddyCore",
     "product: WanBuddyCore",
     "product: Supabase",
-    "SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG DEV_LOGIN",
-    "SWIFT_ACTIVE_COMPILATION_CONDITIONS: BETA DEV_LOGIN",
-    "SWIFT_ACTIVE_COMPILATION_CONDITIONS: RELEASE",
 ):
     if needle not in project:
         fail(f"ios/project.yml is missing {needle!r}")
+
+if project.count('SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited)"') != 3:
+    fail("each configuration must inherit SWIFT_ACTIVE_COMPILATION_CONDITIONS from xcconfig")
+if "DEBUG DEV_LOGIN" in project or "BETA DEV_LOGIN" in project:
+    fail("compile flags must be defined only in the xcconfig files")
+if "PRODUCT_BUNDLE_IDENTIFIER:" in project:
+    fail("bundle id must be defined only in the xcconfig files")
 
 if "WanBuddyMocks" in project:
     fail("ios/project.yml must not link a separate mocks product")
@@ -116,11 +120,29 @@ for key in ("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_PROJECT_REF"):
         fail(f"Release.xcconfig must leave {key} empty")
 if "SWIFT_ACTIVE_COMPILATION_CONDITIONS = RELEASE" not in release:
     fail("Release compile flags must be RELEASE only")
+if not re.search(r"^OTHER_SWIFT_FLAGS\s*=\s*$", release, re.M):
+    fail("Release.xcconfig must leave OTHER_SWIFT_FLAGS empty")
 if "DEV_LOGIN" in release or re.search(r"\bDEBUG\b", release):
     fail("Release.xcconfig must not define DEV_LOGIN or DEBUG")
 
+guards_path = ROOT / "ios/WanBuddy/BuildGuards.swift"
+if not guards_path.is_file():
+    fail("ios/WanBuddy/BuildGuards.swift is missing")
+else:
+    guards = read(guards_path)
+    if "#if RELEASE && (DEV_LOGIN || DEBUG)" not in guards:
+        fail("BuildGuards must #error when RELEASE is combined with DEV_LOGIN or DEBUG")
+    if '#error("Release must not define DEV_LOGIN or DEBUG")' not in guards:
+        fail("BuildGuards is missing the Release #error")
+    if "#if !DEBUG && !BETA && !RELEASE" not in guards:
+        fail("BuildGuards must #error for an unknown configuration")
+    if '#error("Unknown build configuration: define DEBUG, BETA, or RELEASE")' not in guards:
+        fail("BuildGuards is missing the unknown-configuration #error")
+
 known = read(ROOT / "Packages/WanBuddyCore/Sources/WanBuddyCore/Environment/WanBuddyKnownEnvironment.swift")
 shell = read(ROOT / "scripts/check_env.sh")
+if "OTHER_SWIFT_FLAGS" not in shell or "has_swift_define" not in shell:
+    fail("check_env.sh must reject -DDEV_LOGIN and -DDEBUG in OTHER_SWIFT_FLAGS")
 swift_ref = re.search(r'developmentProjectRef = "([a-z0-9]+)"', known)
 shell_ref = re.search(r'^DEV_REF="([a-z0-9]+)"', shell, re.M)
 if not swift_ref or not shell_ref or swift_ref.group(1) != dev_ref or shell_ref.group(1) != dev_ref:
@@ -228,6 +250,8 @@ linux = read(ROOT / ".github/workflows/linux.yml")
 ios = read(ROOT / ".github/workflows/ios.yml")
 if "pull_request:" not in linux or "push:" not in linux:
     fail("Linux workflow must run on pull_request and push")
+if not re.search(r"push:\n\s+branches:\s*\[main\]", linux):
+    fail("Linux push trigger must be limited to branches: [main]")
 if "workflow_dispatch:" not in ios:
     fail("iOS workflow must be workflow_dispatch")
 for banned in ("pull_request:", "push:"):
@@ -235,6 +259,10 @@ for banned in ("pull_request:", "push:"):
         fail(f"iOS workflow must not trigger on {banned}")
 if "macos-" not in ios:
     fail("iOS workflow must use a macOS runner")
+if "build_beta:" not in ios or "if: ${{ inputs.build_beta }}" not in ios:
+    fail("iOS workflow must make the Beta build an optional workflow_dispatch input")
+if "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806" not in ios:
+    fail("iOS workflow must verify the XcodeGen 2.46.0 zip sha256")
 if "contents: read" not in linux or "contents: read" not in ios:
     fail("workflows must set permissions: contents: read")
 

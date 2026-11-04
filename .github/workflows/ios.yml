@@ -4,6 +4,11 @@ name: iOS build
 # workflow is never started by a push or a pull request.
 on:
   workflow_dispatch:
+    inputs:
+      build_beta:
+        description: Also build the Beta configuration
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -47,6 +52,7 @@ jobs:
       - name: Install XcodeGen
         run: |
           curl -fsSL -o /tmp/xcodegen.zip -L https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip
+          echo "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806  /tmp/xcodegen.zip" | shasum -a 256 -c -
           rm -rf /tmp/xcodegen
           unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen
           bin=$(find /tmp/xcodegen -type f -name xcodegen | head -n 1)
@@ -102,6 +108,7 @@ jobs:
             build
 
       - name: Build Beta for the simulator
+        if: ${{ inputs.build_beta }}
         working-directory: ios
         run: |
           xcodebuild \

@@ -118,13 +118,29 @@ load_xcconfig() {
   done < "${file}"
 }
 
+normalize_ws() {
+  printf '%s' "$1" | tr '[:space:]' ' ' | sed 's/  */ /g;s/^ //;s/ $//'
+}
+
 has_token() {
-  haystack=" $1 "
+  haystack=" $(normalize_ws "$1") "
   needle=" $2 "
   case "${haystack}" in
     *"${needle}"*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# True when OTHER_SWIFT_FLAGS passes -DNAME, including tabs and "-D NAME".
+has_swift_define() {
+  text=$(normalize_ws "$1" | sed 's/-D /-D/g')
+  name=$2
+  for token in ${text}; do
+    case "${token}" in
+      -D"${name}"|-D"${name}"=*) return 0 ;;
+    esac
+  done
+  return 1
 }
 
 ref_is_blocked() {
@@ -157,7 +173,8 @@ if [ $# -eq 0 ]; then
   REF=$(trim "${SUPABASE_PROJECT_REF:-}")
   BUNDLE_ID=$(trim "${PRODUCT_BUNDLE_IDENTIFIER:-}")
   BASE=$(trim "${PRODUCT_BUNDLE_IDENTIFIER_BASE:-}")
-  FLAGS=$(trim "${SWIFT_ACTIVE_COMPILATION_CONDITIONS:-}")
+  FLAGS="${SWIFT_ACTIVE_COMPILATION_CONDITIONS:-}"
+  OTHER_FLAGS="${OTHER_SWIFT_FLAGS:-}"
 else
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -186,8 +203,12 @@ else
   REF=$(trim "$(kv_get SUPABASE_PROJECT_REF)")
   BUNDLE_ID=$(trim "$(kv_get PRODUCT_BUNDLE_IDENTIFIER)")
   BASE=$(trim "$(kv_get PRODUCT_BUNDLE_IDENTIFIER_BASE)")
-  FLAGS=$(trim "$(kv_get SWIFT_ACTIVE_COMPILATION_CONDITIONS)")
+  FLAGS="$(kv_get SWIFT_ACTIVE_COMPILATION_CONDITIONS)"
+  OTHER_FLAGS="$(kv_get OTHER_SWIFT_FLAGS)"
 fi
+
+FLAGS=$(normalize_ws "${FLAGS}")
+OTHER_FLAGS=$(normalize_ws "${OTHER_FLAGS}")
 
 case "${CONFIG_NAME}" in
   Debug|Beta|Release) ;;
@@ -228,6 +249,12 @@ case "${CONFIG_NAME}" in
     fi
     if has_token "${FLAGS}" "DEBUG"; then
       fail "Release must not define DEBUG"
+    fi
+    if has_swift_define "${OTHER_FLAGS}" "DEV_LOGIN"; then
+      fail "Release OTHER_SWIFT_FLAGS must not pass -DDEV_LOGIN"
+    fi
+    if has_swift_define "${OTHER_FLAGS}" "DEBUG"; then
+      fail "Release OTHER_SWIFT_FLAGS must not pass -DDEBUG"
     fi
     ;;
 esac

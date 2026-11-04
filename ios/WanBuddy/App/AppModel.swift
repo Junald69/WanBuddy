@@ -8,11 +8,6 @@ import WanBuddyCore
 final class AppModel {
     let config: AppConfig
     let authRepository: SupabaseAuthRepository
-    let profileRepository: ProfileRepository
-    let friendRepository: FriendRepository
-    let presenceRepository: PresenceRepository
-    let safetyRepository: SafetyRepository
-
     let onboardingStore: OnboardingStore
 
     var session: AuthSession?
@@ -28,10 +23,6 @@ final class AppModel {
         }
         let client = SupabaseClient(supabaseURL: url, supabaseKey: config.publishableKey)
         authRepository = SupabaseAuthRepository(client: client)
-        profileRepository = SupabaseProfileRepository(client: client)
-        friendRepository = SupabaseFriendRepository(client: client)
-        presenceRepository = SupabasePresenceRepository(client: client)
-        safetyRepository = SupabaseSafetyRepository(client: client)
         self.onboardingStore = onboardingStore
         #if DEBUG
         DebugMockSmokeTest.touch()

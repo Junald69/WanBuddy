@@ -6,8 +6,8 @@
 
 - `Packages/WanBuddyCore` … モデル、設定の検査、エラー文言、リポジトリの protocol、Debug 用モック。Linux で `swift test` できます。
 - `ios/` … SwiftUI アプリ。Debug / Beta は Development の Supabase、Release の Production 値は空です。
-- `.github/workflows/linux.yml` … pull request と push で Linux 検査。
-- `.github/workflows/ios.yml` … **手動実行だけ**の macOS ビルド。
+- `.github/workflows/linux.yml` … pull request と、main への push で Linux 検査。
+- `.github/workflows/ios.yml` … **手動実行だけ**の macOS ビルド。Beta は入力で選んだときだけ。
 
 ## 接続先
 
@@ -24,4 +24,4 @@ bash scripts/check_mocks_compiled_out.sh
 
 ## iOS ビルド
 
-GitHub の Actions から「iOS build」を手動で実行します。XcodeGen でプロジェクトを生成し、Debug と Beta をシミュレータ向けにビルドします。Production の値が空のうちは Release は失敗するのが正しい結果です。
+GitHub の Actions から「iOS build」を手動で実行します。XcodeGen でプロジェクトを生成し、Debug をシミュレータ向けにビルドします。Beta は「Also build the Beta configuration」をオンにしたときだけです。Production の値が空のうちは Release は失敗するのが正しい結果です。

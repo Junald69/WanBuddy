@@ -25,12 +25,7 @@ extension AppModel {
             session = signedIn
             onboarding = onboardingStore.load(userID: signedIn.userID)
         } catch {
-            let described = String(describing: error)
-            if described.contains("WB") {
-                authErrorMessage = WBErrorMessages.message(extractingFrom: described)
-            } else {
-                authErrorMessage = SignInFailureMessage.message(forServerText: described)
-            }
+            authErrorMessage = SignInFailureMessage.message(forServerText: String(describing: error))
         }
     }
 }
