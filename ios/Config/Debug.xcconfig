@@ -1,0 +1,17 @@
+#include "Common.xcconfig"
+
+// Development Supabase. The publishable key is a public client key.
+// The `$()` keeps xcconfig from treating `//` as a comment.
+
+PRODUCT_BUNDLE_IDENTIFIER = $(PRODUCT_BUNDLE_IDENTIFIER_BASE).dev
+WANBUDDY_CONFIGURATION = debug
+WANBUDDY_BUNDLE_ID_BASE = $(PRODUCT_BUNDLE_IDENTIFIER_BASE)
+
+SUPABASE_PROJECT_REF = nlvjvmymeuvbxlzikpjx
+SUPABASE_URL = https:/$()/nlvjvmymeuvbxlzikpjx.supabase.co
+SUPABASE_PUBLISHABLE_KEY = sb_publishable_rhef8TN72C7vSi6itEHl_g__VXiEkhN
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG DEV_LOGIN
+SWIFT_OPTIMIZATION_LEVEL = -Onone
+SWIFT_COMPILATION_MODE = singlefile
+ENABLE_TESTABILITY = YES

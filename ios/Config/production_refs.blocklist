@@ -1,0 +1,4 @@
+# One Production project ref per line.
+# Debug and Beta fail when SUPABASE_PROJECT_REF is listed here.
+# Leave this empty until the Production project exists.
+# Keep the refs identical to WanBuddyKnownEnvironment.blockedProductionProjectRefs.

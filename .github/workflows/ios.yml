@@ -1,0 +1,114 @@
+name: iOS build
+
+# Manual only. macOS runners consume the Actions quota quickly, so this
+# workflow is never started by a push or a pull request.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          selected=""
+          for xcode in \
+            /Applications/Xcode_26.6.app \
+            /Applications/Xcode_26.6.0.app \
+            /Applications/Xcode_26.5.app \
+            /Applications/Xcode.app
+          do
+            if [ -d "${xcode}" ]; then
+              sudo xcode-select -s "${xcode}"
+              selected="${xcode}"
+              break
+            fi
+          done
+          if [ -z "${selected}" ]; then
+            echo "No usable Xcode was found"
+            exit 1
+          fi
+          xcodebuild -version
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: ios-spm-${{ hashFiles('ios/project.yml', 'Packages/WanBuddyCore/Package.swift') }}
+          restore-keys: |
+            ios-spm-
+
+      - name: Install XcodeGen
+        run: |
+          curl -fsSL -o /tmp/xcodegen.zip -L https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip
+          rm -rf /tmp/xcodegen
+          unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen
+          bin=$(find /tmp/xcodegen -type f -name xcodegen | head -n 1)
+          if [ -z "${bin}" ]; then
+            echo "xcodegen binary was not in the archive"
+            find /tmp/xcodegen -maxdepth 3 -type f
+            exit 1
+          fi
+          chmod +x "${bin}"
+          sudo mkdir -p /usr/local/bin
+          sudo cp "${bin}" /usr/local/bin/xcodegen
+          xcodegen --version
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Release build must fail while Production values are empty
+        working-directory: ios
+        run: |
+          set +e
+          xcodebuild \
+            -project WanBuddy.xcodeproj \
+            -scheme WanBuddy \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO \
+            build > /tmp/wanbuddy-release.log 2>&1
+          status=$?
+          set -e
+          if [ "${status}" -eq 0 ]; then
+            echo "Release build succeeded. Empty Production values must fail the build."
+            exit 1
+          fi
+          if ! grep -q "check_env: FAIL" /tmp/wanbuddy-release.log; then
+            echo "Release build failed before check_env.sh. Last lines:"
+            tail -n 120 /tmp/wanbuddy-release.log
+            exit 1
+          fi
+          echo "Release build failed in check_env.sh, as required."
+
+      - name: Build Debug for the simulator
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project WanBuddy.xcodeproj \
+            -scheme WanBuddy \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Build Beta for the simulator
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project WanBuddy.xcodeproj \
+            -scheme WanBuddy \
+            -configuration Beta \
+            -destination 'generic/platform=iOS Simulator' \
+            -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO \
+            build

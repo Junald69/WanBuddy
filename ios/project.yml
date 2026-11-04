@@ -1,0 +1,86 @@
+name: WanBuddy
+options:
+  createIntermediateGroups: true
+  groupSortPosition: top
+  developmentLanguage: ja
+  knownRegions:
+    - ja
+  deploymentTarget:
+    iOS: "17.0"
+
+configs:
+  Debug: debug
+  Beta: release
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    DEVELOPMENT_LANGUAGE: ja
+    LOCALIZATION_PREFERS_STRING_CATALOGS: "YES"
+    SWIFT_EMIT_LOC_STRINGS: "YES"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    DEVELOPMENT_TEAM: ""
+    ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+    ASSETCATALOG_COMPILER_APPICON_NAME: ""
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG DEV_LOGIN
+      PRODUCT_BUNDLE_IDENTIFIER: $(PRODUCT_BUNDLE_IDENTIFIER_BASE).dev
+    Beta:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: BETA DEV_LOGIN
+      PRODUCT_BUNDLE_IDENTIFIER: $(PRODUCT_BUNDLE_IDENTIFIER_BASE).beta
+    Release:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: RELEASE
+      PRODUCT_BUNDLE_IDENTIFIER: $(PRODUCT_BUNDLE_IDENTIFIER_BASE)
+
+packages:
+  WanBuddyCore:
+    path: ../Packages/WanBuddyCore
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    exactVersion: 2.55.6
+
+targets:
+  WanBuddy:
+    type: application
+    platform: iOS
+    sources:
+      - path: WanBuddy
+        excludes:
+          - Info.plist
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Beta: Config/Beta.xcconfig
+      Release: Config/Release.xcconfig
+    dependencies:
+      - package: WanBuddyCore
+        product: WanBuddyCore
+      - package: Supabase
+        product: Supabase
+    preBuildScripts:
+      - name: Check environment configuration
+        basedOnDependencyAnalysis: false
+        script: |
+          bash "${SRCROOT}/../scripts/check_env.sh"
+
+schemes:
+  WanBuddy:
+    build:
+      targets:
+        WanBuddy: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Beta
+    analyze:
+      config: Debug
+    archive:
+      config: Release

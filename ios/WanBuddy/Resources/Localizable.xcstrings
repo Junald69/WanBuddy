@@ -1,0 +1,196 @@
+{
+  "sourceLanguage" : "ja",
+  "strings" : {
+    "Appleでサインイン" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Appleでサインイン" } }
+      }
+    },
+    "Appleでサインインは、Apple Developer Program加入後に使えるようになります。" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Appleでサインインは、Apple Developer Program加入後に使えるようになります。" } }
+      }
+    },
+    "この機能はまだ準備中です" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この機能はまだ準備中です" } }
+      }
+    },
+    "この犬を削除" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この犬を削除" } }
+      }
+    },
+    "はじめまして" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "はじめまして" } }
+      }
+    },
+    "はじめる" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "はじめる" } }
+      }
+    },
+    "まだお友達の予定はありません" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "まだお友達の予定はありません" } }
+      }
+    },
+    "わんこと、もっとつながろう。" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "わんこと、もっとつながろう。" } }
+      }
+    },
+    "わんこらしく、自分らしく。" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "わんこらしく、自分らしく。" } }
+      }
+    },
+    "うちの子" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "うちの子" } }
+      }
+    },
+    "お友達との時間を楽しんでね" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "お友達との時間を楽しんでね" } }
+      }
+    },
+    "お友達の予定" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "お友達の予定" } }
+      }
+    },
+    "これから行くよ" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "これから行くよ" } }
+      }
+    },
+    "いまいるよ 0" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "いまいるよ 0" } }
+      }
+    },
+    "パスワード" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "パスワード" } }
+      }
+    },
+    "ホーム" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ホーム" } }
+      }
+    },
+    "マイページ" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "マイページ" } }
+      }
+    },
+    "メールアドレス" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "メールアドレス" } }
+      }
+    },
+    "ログアウト" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ログアウト" } }
+      }
+    },
+    "ログイン" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ログイン" } }
+      }
+    },
+    "今いるよ" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "今いるよ" } }
+      }
+    },
+    "今日は誰に会えるかな?" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "今日は誰に会えるかな?" } }
+      }
+    },
+    "今日も、わんこと いい一日を。" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "今日も、わんこと いい一日を。" } }
+      }
+    },
+    "図鑑" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "図鑑" } }
+      }
+    },
+    "図鑑はまだ準備中です" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "図鑑はまだ準備中です" } }
+      }
+    },
+    "大好きな犬友を、もっと身近に。" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "大好きな犬友を、もっと身近に。" } }
+      }
+    },
+    "犬" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "犬" } }
+      }
+    },
+    "犬のアイコン" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "犬のアイコン" } }
+      }
+    },
+    "犬の名前" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "犬の名前" } }
+      }
+    },
+    "犬種（任意）" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "犬種（任意）" } }
+      }
+    },
+    "閉じる" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "閉じる" } }
+      }
+    },
+    "開発用ログイン" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "開発用ログイン" } }
+      }
+    },
+    "着いたらボタンを押してね" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "着いたらボタンを押してね" } }
+      }
+    },
+    "読み込み中" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "読み込み中" } }
+      }
+    },
+    "たつみの森ドッグラン" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "たつみの森ドッグラン" } }
+      }
+    },
+    "もう1頭追加" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "もう1頭追加" } }
+      }
+    },
+    "ニックネーム" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ニックネーム" } }
+      }
+    },
+    "利用規約とプライバシーポリシーに同意する" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "利用規約とプライバシーポリシーに同意する" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

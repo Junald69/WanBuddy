@@ -1,0 +1,17 @@
+#include "Common.xcconfig"
+
+// Production values stay empty until that Supabase project exists.
+// Do not include Debug.xcconfig or Beta.xcconfig.
+// Do not copy Development values here. An empty Release build must fail.
+
+PRODUCT_BUNDLE_IDENTIFIER = $(PRODUCT_BUNDLE_IDENTIFIER_BASE)
+WANBUDDY_CONFIGURATION = release
+WANBUDDY_BUNDLE_ID_BASE = $(PRODUCT_BUNDLE_IDENTIFIER_BASE)
+
+SUPABASE_PROJECT_REF =
+SUPABASE_URL =
+SUPABASE_PUBLISHABLE_KEY =
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = RELEASE
+SWIFT_OPTIMIZATION_LEVEL = -O
+SWIFT_COMPILATION_MODE = wholemodule
