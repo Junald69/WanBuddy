@@ -131,9 +131,10 @@ has_token() {
   esac
 }
 
-# True when OTHER_SWIFT_FLAGS passes -DNAME, including tabs and "-D NAME".
+# True when OTHER_SWIFT_FLAGS passes -DNAME. Tabs, "-D NAME", and quote
+# wrapping ("-DNAME", -D"NAME", and the same with single quotes) all count.
 has_swift_define() {
-  text=$(normalize_ws "$1" | sed 's/-D /-D/g')
+  text=$(normalize_ws "$1" | tr -d "\"'" | sed 's/-D /-D/g')
   name=$2
   for token in ${text}; do
     case "${token}" in

@@ -249,4 +249,74 @@ expect_fail_env "env Release tab before -DDEV_LOGIN" \
   SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
   SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
 
+expect_fail_env "env Release quoted whole -DDEV_LOGIN" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  OTHER_SWIFT_FLAGS='"-DDEV_LOGIN"' \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
+expect_fail_env "env Release quoted name -DDEV_LOGIN" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  OTHER_SWIFT_FLAGS='-D"DEV_LOGIN"' \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
+expect_fail_env "env Release single-quoted whole -DDEV_LOGIN" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  OTHER_SWIFT_FLAGS="'-DDEV_LOGIN'" \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
+expect_fail_env "env Release single-quoted name -DDEV_LOGIN" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  OTHER_SWIFT_FLAGS="-D'DEV_LOGIN'" \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
+expect_fail_env "env Release double-quoted -DDEBUG" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  OTHER_SWIFT_FLAGS='"-DDEBUG"' \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
+expect_fail_env "env Release single-quoted name -DDEBUG" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  OTHER_SWIFT_FLAGS="-D'DEBUG'" \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
+expect_ok_env "env valid Release quoted unrelated define" \
+  CONFIGURATION=Release \
+  PRODUCT_BUNDLE_IDENTIFIER="${BASE_VALUE}" \
+  PRODUCT_BUNDLE_IDENTIFIER_BASE="${BASE_VALUE}" \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=RELEASE \
+  OTHER_SWIFT_FLAGS='"-DOTHER_FLAG"' \
+  SUPABASE_PROJECT_REF=abcdefghijklmnopqrst \
+  SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_example
+
 echo "check_env tests passed"

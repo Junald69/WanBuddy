@@ -28,9 +28,9 @@ settings:
     DEVELOPMENT_TEAM: ""
     ENABLE_USER_SCRIPT_SANDBOXING: "NO"
     ASSETCATALOG_COMPILER_APPICON_NAME: ""
-  # XcodeGen's debug preset writes SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG
-  # into the project, which would hide the xcconfig. Inherit so the xcconfig
-  # files stay the only place those flags and bundle ids are defined.
+  # Project-level only. WanBuddy's target xcconfig (configFiles) is applied
+  # above this level, so it stays the source of SWIFT_ACTIVE_COMPILATION_CONDITIONS.
+  # $(inherited) keeps this level from adding a second flag list.
   configs:
     Debug:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited)"

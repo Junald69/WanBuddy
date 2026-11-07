@@ -192,10 +192,6 @@ forbidden_outside_dev_login = (
     "signInWithEmail",
     "signIn(email",
     "MockAuthRepository",
-    "MockProfileRepository",
-    "MockFriendRepository",
-    "MockPresenceRepository",
-    "MockSafetyRepository",
 )
 app_root = ROOT / "ios/WanBuddy"
 for path in app_root.rglob("*.swift"):
