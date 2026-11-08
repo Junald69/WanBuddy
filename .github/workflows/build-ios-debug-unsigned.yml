@@ -1,0 +1,158 @@
+name: Build unsigned Debug IPA
+
+# Run only after explicit approval for macOS Actions usage.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: debug-unsigned-ipa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26.6
+        run: |
+          xcode="/Applications/Xcode_26.6.app"
+          if [ ! -d "${xcode}" ]; then
+            echo "Required Xcode is missing: ${xcode}"
+            ls -d /Applications/Xcode*.app || true
+            exit 1
+          fi
+          sudo xcode-select -s "${xcode}"
+          xcodebuild -version
+          version=$(xcodebuild -version | awk 'NR==1 {print $2}')
+          case "${version}" in
+            26.6|26.6.*) ;;
+            *)
+              echo "Expected Xcode 26.6, got ${version}"
+              exit 1
+              ;;
+          esac
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: ios-spm-${{ hashFiles('ios/project.yml', 'Packages/WanBuddyCore/Package.swift') }}
+          restore-keys: |
+            ios-spm-
+
+      - name: Install XcodeGen
+        run: |
+          curl -fsSL -o /tmp/xcodegen.zip -L https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip
+          echo "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806  /tmp/xcodegen.zip" | shasum -a 256 -c -
+          rm -rf /tmp/xcodegen
+          unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen
+          bin=$(find /tmp/xcodegen -type f -name xcodegen | head -n 1)
+          if [ -z "${bin}" ]; then
+            echo "xcodegen binary was not in the archive"
+            find /tmp/xcodegen -maxdepth 3 -type f
+            exit 1
+          fi
+          chmod +x "${bin}"
+          sudo mkdir -p /usr/local/bin
+          sudo cp "${bin}" /usr/local/bin/xcodegen
+          xcodegen --version
+
+      - name: Check existing environment guards
+        run: |
+          set -euo pipefail
+          bash scripts/test_check_env.sh
+          python3 scripts/check_static.py
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build unsigned Debug for a physical iPhone
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project WanBuddy.xcodeproj \
+            -scheme WanBuddy \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/WanBuddyDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Validate app and package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/WanBuddyDerivedData/Build/Products/Debug-iphoneos/WanBuddy.app"
+          test -d "$APP"
+          python3 - "$APP" <<'PY'
+          import json
+          import os
+          import pathlib
+          import plistlib
+          import re
+          import sys
+
+          app = pathlib.Path(sys.argv[1])
+          with (app / "Info.plist").open("rb") as source:
+              info = plistlib.load(source)
+          known = pathlib.Path("Packages/WanBuddyCore/Sources/WanBuddyCore/Environment/WanBuddyKnownEnvironment.swift").read_text()
+          match = re.search(r'developmentProjectRef = "([a-z0-9]{20})"', known)
+          if match is None:
+              sys.exit("Cannot determine Development project reference")
+          ref = match.group(1)
+          expected = {
+              "CFBundleIdentifier": "com.junald69.wanbuddy.dev",
+              "WANBUDDY_CONFIGURATION": "debug",
+              "WANBUDDY_BUNDLE_ID_BASE": "com.junald69.wanbuddy",
+              "SUPABASE_PROJECT_REF": ref,
+              "SUPABASE_URL": f"https://{ref}.supabase.co",
+              "CFBundleSupportedPlatforms": ["iPhoneOS"],
+          }
+          for key, value in expected.items():
+              if info.get(key) != value:
+                  sys.exit(f"Unexpected {key}; refusing to package")
+          if not info.get("SUPABASE_PUBLISHABLE_KEY", "").startswith("sb_publishable_"):
+              sys.exit("Missing publishable client key")
+          if (app / "embedded.mobileprovision").exists() or (app / "_CodeSignature").exists():
+              sys.exit("Expected an unsigned app without signing material")
+          executable = app / info["CFBundleExecutable"]
+          if not executable.is_file():
+              sys.exit("App executable is missing")
+          metadata = {
+              "commit": os.environ["GITHUB_SHA"],
+              "configuration": "Debug",
+              "bundle_id": info["CFBundleIdentifier"],
+              "supabase_environment": "Development",
+              "signing": "unsigned; sign with iLoader on Windows",
+          }
+          pathlib.Path("WanBuddy-debug-build.json").write_text(json.dumps(metadata, indent=2) + "\n")
+          print("Validated unsigned Debug app for Development")
+          PY
+          xcrun lipo -verify_arch arm64 "$APP/WanBuddy"
+          STAGE="$RUNNER_TEMP/WanBuddyDebugIPA"
+          mkdir -p "$STAGE/Payload"
+          ditto "$APP" "$STAGE/Payload/WanBuddy.app"
+          (cd "$STAGE" && zip -qry "$GITHUB_WORKSPACE/WanBuddy-debug-unsigned.ipa" Payload)
+          unzip -tq "$GITHUB_WORKSPACE/WanBuddy-debug-unsigned.ipa"
+          shasum -a 256 WanBuddy-debug-unsigned.ipa > WanBuddy-debug-unsigned.ipa.sha256
+
+      - name: Upload unsigned Debug IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: WanBuddy-debug-unsigned-ipa-${{ github.sha }}
+          path: |
+            WanBuddy-debug-unsigned.ipa
+            WanBuddy-debug-unsigned.ipa.sha256
+            WanBuddy-debug-build.json
+          if-no-files-found: error
+          retention-days: 7
