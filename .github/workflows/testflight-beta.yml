@@ -1,0 +1,154 @@
+name: WanBuddy Beta TestFlight
+
+# Manual only. macOS usage and Apple upload require separate user approval.
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'validate builds/signs only; upload also sends the IPA to Apple'
+        type: choice
+        options:
+          - validate
+          - upload
+        default: validate
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wanbuddy-beta-testflight
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    # Review and merge separately before this credential-bearing workflow can run.
+    if: github.ref == 'refs/heads/main'
+    environment: testflight-beta
+    runs-on: macos-26
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate operation and existing guards before generating project
+        env:
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          case "$OPERATION" in validate|upload) ;; *) exit 1 ;; esac
+          case "$BUILD_NUMBER" in ''|*[!0-9]*) exit 1 ;; esac
+          test "$BUILD_NUMBER" -ge 1 && test "$BUILD_NUMBER" -le 9999
+          test -n "$APPLE_TEAM_ID"
+          bash scripts/test_check_env.sh
+          python3 scripts/check_static.py
+          python3 -m unittest discover -s scripts/tests -v
+
+      - name: Select Xcode 26.6
+        run: |
+          xcode="/Applications/Xcode_26.6.app"
+          if [ ! -d "${xcode}" ]; then
+            echo "Required Xcode is missing: ${xcode}"
+            ls -d /Applications/Xcode*.app || true
+            exit 1
+          fi
+          sudo xcode-select -s "${xcode}"
+          xcodebuild -version
+          version=$(xcodebuild -version | awk 'NR==1 {print $2}')
+          case "${version}" in
+            26.6|26.6.*) ;;
+            *)
+              echo "Expected Xcode 26.6, got ${version}"
+              exit 1
+              ;;
+          esac
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: ios-spm-${{ hashFiles('ios/project.yml', 'Packages/WanBuddyCore/Package.swift') }}
+          restore-keys: |
+            ios-spm-
+
+      - name: Install XcodeGen
+        run: |
+          curl -fsSL -o /tmp/xcodegen.zip -L https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip
+          echo "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806  /tmp/xcodegen.zip" | shasum -a 256 -c -
+          rm -rf /tmp/xcodegen
+          unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen
+          bin=$(find /tmp/xcodegen -type f -name xcodegen | head -n 1)
+          if [ -z "${bin}" ]; then
+            echo "xcodegen binary was not in the archive"
+            find /tmp/xcodegen -maxdepth 3 -type f
+            exit 1
+          fi
+          chmod +x "${bin}"
+          sudo mkdir -p /usr/local/bin
+          sudo cp "${bin}" /usr/local/bin/xcodegen
+          xcodegen --version
+
+
+      - name: Generate project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Prepare temporary signing identity
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+        run: bash scripts/testflight_signing.sh setup
+
+      - name: Archive Beta, export and verify signed IPA
+        run: bash scripts/testflight_build.sh
+
+      - name: Upload verified IPA to App Store Connect
+        if: inputs.operation == 'upload'
+        env:
+          APPSTORE_API_KEY_BASE64: ${{ secrets.APPSTORE_API_KEY_BASE64 }}
+          APPSTORE_KEY_ID: ${{ vars.APPSTORE_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$APPSTORE_API_KEY_BASE64"
+          [[ "$APPSTORE_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]
+          [[ "$APPSTORE_ISSUER_ID" =~ ^[a-fA-F0-9-]{36}$ ]]
+          KEY_DIR="$RUNNER_TEMP/wanbuddy-testflight/private_keys"
+          mkdir -p "$KEY_DIR"
+          printf '%s' "$APPSTORE_API_KEY_BASE64" | base64 --decode > "$KEY_DIR/AuthKey_${APPSTORE_KEY_ID}.p8"
+          chmod 600 "$KEY_DIR/AuthKey_${APPSTORE_KEY_ID}.p8"
+          # altool searches ./private_keys; keep the key inside RUNNER_TEMP.
+          cd "$RUNNER_TEMP/wanbuddy-testflight"
+          xcrun altool --upload-app -f Export/WanBuddy.ipa -t ios \
+            --apiKey "$APPSTORE_KEY_ID" --apiIssuer "$APPSTORE_ISSUER_ID"
+          echo "Apple upload command completed; check processing status in App Store Connect." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record validated build
+        uses: actions/upload-artifact@v4
+        with:
+          name: WanBuddy-Beta-build-${{ github.run_number }}
+          path: ${{ runner.temp }}/wanbuddy-testflight-report/build.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Summarize scope
+        env:
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          printf 'Beta / Development / com.junald69.wanbuddy.beta / build %s\n' "$BUILD_NUMBER" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$OPERATION" = validate ]; then
+            echo "Validation only: no IPA was uploaded to Apple. This run still used macOS minutes." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Remove signing material even after failure
+        if: always()
+        run: bash scripts/testflight_signing.sh cleanup

@@ -25,3 +25,12 @@ bash scripts/check_mocks_compiled_out.sh
 ## iOS ビルド
 
 GitHub の Actions から「iOS build」を手動で実行します。XcodeGen でプロジェクトを生成し、Debug をシミュレータ向けにビルドします。Beta は「Also build the Beta configuration」をオンにしたときだけです。Production の値が空のうちは Release は失敗するのが正しい結果です。
+
+
+## TestFlight の内部実機テスト
+
+Beta 構成（Development Supabase / `com.junald69.wanbuddy.beta`）の署名・Archive・
+アップロードは [Windows 向け手順書](docs/testflight-beta-windows.md)を参照してください。
+`WanBuddy Beta TestFlight` は main の手動実行だけで、専用 Environment `testflight-beta` を使います。
+既定の `validate` はアップロードしません。macOS 実行・Apple 設定・Secrets 登録・アップロードは事前確認が必要です。
+通常ビルドは署名無効のままです。未署名 Debug IPA の PR #3 はこの方式ではマージしません。
