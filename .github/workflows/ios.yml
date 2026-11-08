@@ -1,9 +1,8 @@
 name: iOS build
 
-# Manual only. macOS runners consume the Actions quota quickly, so this
-# workflow is never started by a push or a pull request.
-# GitHub only lists and accepts workflow_dispatch after this file is on the
-# default branch (main). Until then the Actions tab shows Linux checks only.
+# workflow_dispatch stays. pull_request is temporary so PR #2 can start
+# one macOS run without the file being on main. No push, no pull_request_target.
+# GitHub only lists workflow_dispatch after this file is on the default branch.
 on:
   workflow_dispatch:
     inputs:
@@ -11,13 +10,32 @@ on:
         description: Also build the Beta configuration
         type: boolean
         default: false
+  pull_request:
+    types: [synchronize]
+    branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   ios:
     # Pinned image. Do not use macos-latest; that label moves.
+    # pull_request runs only for this repo's PR #2 on feature/m0-m1a-ios-skeleton.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        github.event.action == 'synchronize' &&
+        github.event.pull_request.number == 2 &&
+        github.event.pull_request.base.ref == 'main' &&
+        github.event.pull_request.head.ref == 'feature/m0-m1a-ios-skeleton' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.repository == 'Junald69/WanBuddy'
+      )
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -109,7 +127,7 @@ jobs:
             build
 
       - name: Build Beta for the simulator
-        if: ${{ inputs.build_beta }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_beta == true }}
         working-directory: ios
         run: |
           xcodebuild \
