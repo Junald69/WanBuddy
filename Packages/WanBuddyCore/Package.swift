@@ -3,6 +3,9 @@ import PackageDescription
 
 let package = Package(
     name: "WanBuddyCore",
+    platforms: [
+        .iOS(.v17),
+    ],
     products: [
         .library(name: "WanBuddyCore", targets: ["WanBuddyCore"]),
     ],
