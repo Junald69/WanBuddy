@@ -1,0 +1,43 @@
+name: Linux checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Environment and project checks
+        run: |
+          bash scripts/test_check_env.sh
+          python3 scripts/check_static.py
+
+      - name: Install Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.2"
+
+      - name: Cache Swift package build
+        uses: actions/cache@v4
+        with:
+          path: |
+            Packages/WanBuddyCore/.build
+            ~/.cache/org.swift.swiftpm
+          key: wanbuddy-core-${{ runner.os }}-swift6.2-${{ hashFiles('Packages/WanBuddyCore/Package.swift', 'Packages/WanBuddyCore/Sources/**/*.swift', 'Packages/WanBuddyCore/Tests/**/*.swift') }}
+
+      - name: Test WanBuddyCore and confirm mocks are compiled out of release
+        run: |
+          swift test --package-path Packages/WanBuddyCore
+          bash scripts/check_mocks_compiled_out.sh

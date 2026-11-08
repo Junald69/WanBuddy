@@ -2,3 +2,15 @@
 .env
 .env.*
 .pg-local/
+
+# XcodeGen output. The project is generated in CI from ios/project.yml.
+*.xcodeproj
+xcuserdata/
+DerivedData/
+build/
+
+# Swift package build output
+.build/
+.swiftpm/
+Packages/*/.build
+

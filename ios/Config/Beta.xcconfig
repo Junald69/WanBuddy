@@ -1,0 +1,16 @@
+#include "Common.xcconfig"
+
+// TestFlight-before-production: Development Supabase, release optimization.
+// Dev login stays compiled in. Do not point this file at Production.
+
+PRODUCT_BUNDLE_IDENTIFIER = $(PRODUCT_BUNDLE_IDENTIFIER_BASE).beta
+WANBUDDY_CONFIGURATION = beta
+WANBUDDY_BUNDLE_ID_BASE = $(PRODUCT_BUNDLE_IDENTIFIER_BASE)
+
+SUPABASE_PROJECT_REF = nlvjvmymeuvbxlzikpjx
+SUPABASE_URL = https:/$()/nlvjvmymeuvbxlzikpjx.supabase.co
+SUPABASE_PUBLISHABLE_KEY = sb_publishable_rhef8TN72C7vSi6itEHl_g__VXiEkhN
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = BETA DEV_LOGIN
+SWIFT_OPTIMIZATION_LEVEL = -O
+SWIFT_COMPILATION_MODE = wholemodule
