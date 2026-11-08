@@ -2,6 +2,8 @@ name: iOS build
 
 # Manual only. macOS runners consume the Actions quota quickly, so this
 # workflow is never started by a push or a pull request.
+# GitHub only lists and accepts workflow_dispatch after this file is on the
+# default branch (main). Until then the Actions tab shows Linux checks only.
 on:
   workflow_dispatch:
     inputs:
@@ -15,31 +17,30 @@ permissions:
 
 jobs:
   ios:
+    # Pinned image. Do not use macos-latest; that label moves.
     runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
+      - name: Select Xcode 26.6
         run: |
-          selected=""
-          for xcode in \
-            /Applications/Xcode_26.6.app \
-            /Applications/Xcode_26.6.0.app \
-            /Applications/Xcode_26.5.app \
-            /Applications/Xcode.app
-          do
-            if [ -d "${xcode}" ]; then
-              sudo xcode-select -s "${xcode}"
-              selected="${xcode}"
-              break
-            fi
-          done
-          if [ -z "${selected}" ]; then
-            echo "No usable Xcode was found"
+          xcode="/Applications/Xcode_26.6.app"
+          if [ ! -d "${xcode}" ]; then
+            echo "Required Xcode is missing: ${xcode}"
+            ls -d /Applications/Xcode*.app || true
             exit 1
           fi
+          sudo xcode-select -s "${xcode}"
           xcodebuild -version
+          version=$(xcodebuild -version | awk 'NR==1 {print $2}')
+          case "${version}" in
+            26.6|26.6.*) ;;
+            *)
+              echo "Expected Xcode 26.6, got ${version}"
+              exit 1
+              ;;
+          esac
 
       - name: Cache Swift packages
         uses: actions/cache@v4
