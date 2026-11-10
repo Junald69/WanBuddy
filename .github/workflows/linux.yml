@@ -23,6 +23,7 @@ jobs:
         run: |
           bash scripts/test_check_env.sh
           python3 scripts/check_static.py
+          python3 -m unittest discover -s scripts/tests -v
 
       - name: Install Swift
         uses: swift-actions/setup-swift@v2
@@ -41,3 +42,4 @@ jobs:
         run: |
           swift test --package-path Packages/WanBuddyCore
           bash scripts/check_mocks_compiled_out.sh
+

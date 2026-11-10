@@ -14,3 +14,16 @@ build/
 .swiftpm/
 Packages/*/.build
 
+
+
+# Signing material and local distribution output must never be committed.
+*.p12
+*.p8
+*.mobileprovision
+*.pem
+*.key
+*.certSigningRequest
+*.ipa
+*.xcarchive/
+__pycache__/
+*.pyc
