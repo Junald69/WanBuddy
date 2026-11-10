@@ -129,8 +129,11 @@ class WorkflowTests(unittest.TestCase):
         source = (ROOT / '.github/workflows/testflight-beta.yml').read_text()
         self.assertNotIn('pull_request:', source)
         self.assertNotIn('push:', source)
-        for text in ['workflow_dispatch:', 'default: validate', "if: github.ref == 'refs/heads/main'",
-                     'environment: testflight-beta', "if: inputs.operation == 'upload'", 'if: always()',
+        self.assertNotIn('environment:', source)
+        for text in ['workflow_dispatch:', 'default: validate', "github.ref == 'refs/heads/main'",
+                     "github.event_name == 'workflow_dispatch'", "github.repository == 'Junald69/WanBuddy'",
+                     'github.actor == github.repository_owner', 'github.triggering_actor == github.repository_owner',
+                     'inputs.approved_commit == github.sha', 'ref: ${{ github.sha }}', 'bash scripts/testflight_request.sh', "if: inputs.operation == 'upload'", 'if: always()',
                      'contents: read', 'persist-credentials: false']:
             self.assertIn(text, source)
         self.assertLess(source.index('python3 scripts/check_static.py'), source.index('run: xcodegen generate'))
@@ -138,6 +141,30 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('-configuration Beta', build)
         self.assertNotIn('-configuration Release', build)
         self.assertLess(build.index('testflight_validate.py ipa'), build.index('build.json'))
+
+    def test_run_guard_rejects_other_actors_refs_events_and_commits(self):
+        sha = 'a' * 40
+        env = {'PATH': '/usr/bin:/bin', 'GITHUB_EVENT_NAME': 'workflow_dispatch',
+               'GITHUB_REPOSITORY': 'Junald69/WanBuddy', 'GITHUB_REF': 'refs/heads/main',
+               'GITHUB_REPOSITORY_OWNER': 'Junald69', 'GITHUB_ACTOR': 'Junald69',
+               'GITHUB_TRIGGERING_ACTOR': 'Junald69', 'GITHUB_SHA': sha,
+               'APPROVED_COMMIT': sha, 'OPERATION': 'validate'}
+        script = str(ROOT / 'scripts/testflight_request.sh')
+        def run(settings):
+            return subprocess.run(['bash', script], env=settings, capture_output=True).returncode
+        self.assertEqual(run(env), 0)
+        self.assertEqual(run(dict(env, OPERATION='upload')), 0)
+        for key, value in [('GITHUB_EVENT_NAME', 'pull_request'), ('GITHUB_EVENT_NAME', 'push'),
+                           ('GITHUB_EVENT_NAME', 'pull_request_target'), ('GITHUB_EVENT_NAME', 'workflow_run'),
+                           ('GITHUB_REPOSITORY', 'someone/WanBuddy'), ('GITHUB_REF', 'refs/heads/feature'),
+                           ('GITHUB_REF', 'refs/tags/main'), ('GITHUB_ACTOR', 'collaborator'),
+                           ('GITHUB_TRIGGERING_ACTOR', 'collaborator'), ('GITHUB_REPOSITORY_OWNER', 'someone'),
+                           ('APPROVED_COMMIT', ''), ('APPROVED_COMMIT', 'b' * 40),
+                           ('APPROVED_COMMIT', 'a' * 7), ('APPROVED_COMMIT', '$(echo bad)'),
+                           ('GITHUB_SHA', ''), ('OPERATION', 'production')]:
+            bad = dict(env); bad[key] = value
+            with self.subTest(key=key, value=value):
+                self.assertNotEqual(run(bad), 0)
 
     def test_normal_builds_stay_unsigned(self):
         for path in ['ios/project.yml', 'ios/Config/Common.xcconfig']:

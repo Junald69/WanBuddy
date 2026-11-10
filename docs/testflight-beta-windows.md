@@ -2,7 +2,7 @@
 
 ## 現在地と承認の区切り
 
-この変更は実装と PR までです。Apple 側の登録、GitHub Environment / Secrets の作成、
+この変更は実装と PR までです。Apple 側の登録、GitHub Secrets / Variables の登録、
 macOS Actions の実行、Apple へのアップロード、main へのマージは別途確認してから行います。
 以下の操作手順は、その承認後に使います。秘密情報をチャットや PR に貼らないでください。
 
@@ -89,20 +89,69 @@ CI が秘密鍵を平文出力して変換するフォールバックは実装�
 内部テストのために App Store の一般公開申請や有料販売の銀行・税務設定を進める必要はありません。
 Apple が求める契約・提出情報が別途表示された場合は、その内容を確認します。
 
-## 3. GitHub の専用 Environment（承認後）
+## 3. GitHub Free / Private の Repository Secrets（承認後）
 
-リポジトリ **Settings → Environments → New environment** で **testflight-beta** を作成します。
-Deployment branches は **main のみ**に制限します。
-利用プランで使える場合は Required reviewers を設定し、macOS 実行とアップロードの承認者を指定します。
-自分だけの運用では自己承認制限との兼ね合いを確認してください。
-private リポジトリの Environment 保護機能にはプラン制約があるため、利用可否を画面で確認します。
+### プランの制約と採用する方式
 
-この workflow は main 以外ではジョブを実行しません。手動起動だけであり、PR / push からは実行しません。
-ただし手動起動そのものは人による事前承認を自動保証しません。保護機能が利用できない場合も、
-チャットで対象コミット・operation・費用上限の承認を受けてから起動します。
-Environment が存在しないまま起動すると自動作成される場合があるため、必ず先に設定を確認します。
+GitHub 公式資料を 2026-11-10 に確認した結果:
 
-Environment **Secrets** に以下の 4 個だけを登録します。Repository Secrets には重複登録しません。
+| 機能 | Free の Private | この PR の対応 |
+|---|---|---|
+| Repository Secrets / Repository Variables | 利用可能 | 採用 |
+| Environment / Environment Secrets / Deployment branches | 利用不可（Private は Pro / Team / Enterprise が必要） | workflow の environment 指定を削除 |
+| Environment の Required reviewers / Wait timer | Free / Pro / Team では Public のみ | Private の自動承認ゲートとして使わない |
+| main の Protected branches / Branch・Tag Rulesets | Free の Private では利用不可 | 下記の単独運用ルールで補完 |
+
+有料プランへの加入やリポジトリの公開化は今回の前提にしません。
+個人所有リポジトリの Private 保護は Pro、組織所有なら Team などの契約で利用可能ですが、
+その場合でも Environment の Required reviewers が Private で使えるとは限りません。
+現在のアカウントの契約・共同編集者・App 権限はこの調査で監査していません。
+
+### Secrets の本当のアクセス境界（登録前に確認）
+
+**Repository Secrets は特定の workflow、main、所有者だけに隔離できません。**
+GitHub の画面から値を読み戻せなくても、書き込み権限を持つ人・App は別の branch や workflow を作り、
+Secrets を参照できます。この PR の if 条件、SHA 入力、read-only GITHUB_TOKEN は、
+この workflow の誤実行を防ぎますが、その迂回を防ぐ権限境界ではありません。
+所有者だけに Run workflow を制限しても、この限界は変わりません。
+同一リポジトリ内の PR の変更も信頼済みコードとして扱う必要があります。
+
+Free のまま採用する条件は、**書き込み可能なすべての人・App・PAT を秘密情報の利用者として信頼できること**です。
+最小構成は所有者 Junald69 だけが書き込み・マージ・実行する運用です。
+Settings の Collaborators と、個人設定の Installed GitHub Apps / PAT のアクセスを確認し、
+不要な Contents / Workflows 書き込み権限は登録前に見直します。これは手順であり、本 PR で設定は変更していません。
+アカウントは 2FA / パスキーを使用し、共有ログインは避けます。
+
+他の書き込み利用者を信頼できない場合は、Secrets を登録しないでください。
+無料の代案として所有者だけが書ける別の Private 配布リポジトリに署名ジョブを分離できますが、
+取得するソースコミット・依存物まで含む別設計が必要です。本 PR の設定だけで同等の隔離ができるとは説明しません。
+
+### main と workflow の運用・起動制限
+
+Free / Private では「main に直接 Push できない」「CI が通るまでマージできない」を GitHub 側で
+強制できません。次の運用を所有者が守ります。CODEOWNERS を置くだけでも強制にはなりません。
+
+1. main へ直接 Push / force-push / 削除をせず、すべて PR 経由にします。
+2. Linux checks 成功と差分レビュー後に、別途承認して main へマージします。
+   .github/workflows、署名・検査スクリプト、依存の変更を重点確認します。
+3. Repository の Actions 設定は通常の GITHUB_TOKEN を read-only にし、不要な PR 作成・承認権限を与えません。
+   Fork PR に write token / Secrets を渡す設定を有効化しません。
+   ただし同一リポジトリの workflow 編集者への隔離にはなりません。
+4. 配布 workflow はこのリポジトリの main / workflow_dispatch だけ、起動者と再実行者の両方が
+   所有者 Junald69 の場合だけ進みます。PR / push / schedule / workflow_run では起動しません。
+5. 承認した main の完全な 40 桁コミット SHA、operation、費用上限を記録します。
+   Run workflow の approved_commit に同じ SHA を入力します。対象 SHA が一致しないジョブはスキップされます。
+   Checkout も実行の SHA に固定します。SHA 入力は承認記録との照合であり、人の承認自体を自動証明しません。
+6. 既定は validate（アップロードなし）。upload は Apple へのアップロードも別途承認済みの場合だけ選びます。
+
+将来 Private のブランチ保護が使えるプランにする場合は、main に PR 必須、Linux checks 必須、
+レビュー必須（単独運用で承認者がいない点は考慮）、force-push / 削除禁止、管理者の迂回も制限、を設定します。
+その場合も Repository Secrets の workflow 単位の隔離はできないため、書き込み権限の管理は必要です。
+
+### Repository に登録する項目
+
+**Settings → Secrets and variables → Actions → Secrets → New repository secret** に以下の 4 個だけを登録します。
+Environment は作成しません。Organization Secrets は Free の Private への代替にはなりません。
 
 | 名前 | 値 |
 |---|---|
@@ -111,7 +160,7 @@ Environment **Secrets** に以下の 4 個だけを登録します。Repository 
 | BUILD_PROVISION_PROFILE_BASE64 | Beta 専用 App Store Connect Profile の Base64 |
 | APPSTORE_API_KEY_BASE64 | App Store Connect API 秘密鍵 P8 の Base64 |
 
-Environment **Variables** には次を登録します（秘密鍵ではない識別子）。
+同じ Actions ページの **Variables → New repository variable** に次を登録します。
 
 | 名前 | 値 |
 |---|---|
@@ -122,7 +171,29 @@ Environment **Variables** には次を登録します（秘密鍵ではない識
 一時 Keychain のパスワードは実行時に生成するため Secret は不要です。
 Apple ID のパスワード、アプリ用パスワード、Supabase のサーバー用キー、
 Supabase テストユーザーのパスワードは登録しません。
-Secrets は承認済み main のジョブだけへ渡し、署名用 Secrets は準備ステップ、P8 は upload ステップだけで使用します。
+本 workflow では署名用 Secrets は準備ステップ、P8 は upload ステップだけに渡します。
+これは渡す範囲を狭める措置であり、他 workflow からのアクセスを禁止する設定ではありません。
+Environment に同名の値がある場合も自動で移行されません。設定変更は別途確認してから行います。
+
+### ClipHarbor の証明書・API Key を再利用する条件
+
+- **Distribution P12**: 同じ Apple Developer Team、Apple Distribution の種類、有効期限内・未失効で、
+  対応する秘密鍵入り P12 とパスワードを手元に保有すること。Apple の .cer だけでは署名できません。
+  証明書は通常 Team の複数アプリで使えますが、WanBuddy Beta 専用の App Store Connect Profile を
+  新規に作り、その証明書と com.junald69.wanbuddy.beta を選ぶ必要があります。
+  Profile の App ID prefix と Team ID は別に検証します。ClipHarbor の Profile は流用できません。
+- **API Key**: App Store Connect の同じ Team / Provider に属し、有効・未失効で、対象 Beta アプリへ
+  ビルドをアップロードできる権限を持つこと。今回の実装は Team API Key の P8・Key ID・Issuer ID の組を前提にします。
+  Individual API Key はこの手順へそのまま置き換えません。アップロードには Developer 権限を基本とし、
+  このためだけに Admin 権限へ広げません。手元に P8 がなければ新規 Key を準備します。
+- GitHub に保存済みの ClipHarbor Secrets を読み戻したり、リポジトリ間で自動参照したりはできません。
+  信頼できるローカルバックアップから WanBuddy の Repository Secrets に別途登録します。
+- 同じ証明書・API Key を共有すると、流出・失効・更新の影響が ClipHarbor にも及びます。
+  Team API Key は専用名でも全アプリが権限範囲になり得ます。配布用途の新しい Developer Key を
+  分けると個別失効は容易ですが、Team 内のアプリ範囲を限定できるわけではありません。
+- 流用時は漏えい・更新・失効の連絡先と両アプリの更新手順を決めます。
+  証明書上限を空ける目的で既存証明書を失効したり、既存 API Key を置き換えたりはしません。
+  現在の P12 / P8 の保有、有効性、権限は未確認であり、再利用可能と断定していません。
 
 ### Windows で Base64 を入力する
 
@@ -153,11 +224,13 @@ Base64 は暗号化ではありません。パスワードや Base64 値を PR�
 ## 5. 実行する前に
 
 - PR のレビュー・Linux checks が完了し、承認後に main へマージ済みであること。
-- Environment の main 制限、Variables、Secrets、Profile と証明書の期限・Team を確認済みであること。
+- 書き込み権限の信頼条件、Repository Variables / Secrets、Profile と証明書の期限・Team を確認済みであること。
 - Xcode 26.6 が macos-26 にあること。なければ停止し、別バージョンへ無断変更しないこと。
 - macOS Actions と、operation=upload の場合は Apple へのアップロードも承認済みであること。
 
-Actions → **WanBuddy Beta TestFlight → Run workflow** で main と operation を指定します。
+所有者 Junald69 が Actions → **WanBuddy Beta TestFlight → Run workflow** を開き、
+main、operation、承認済み main の完全 SHA（approved_commit）を指定します。
+マージコミットの SHA を使い、PR ブランチの古い SHA は使いません。
 
 - **validate（既定）**: 署名、Beta Archive、エクスポート、ローカル検証まで。Apple へアップロードしません。
   ただし macOS 時間は消費し、依存取得などのネットワーク通信は発生します。
@@ -218,3 +291,11 @@ Apple 側の処理待ちには macOS ジョブを待機させません。
 - https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/
 - https://docs.github.com/en/billing/reference/actions-runner-pricing
 - https://github.com/Junald69/ClipHarbor/blob/main/.github/workflows/deploy-testflight.yml
+
+### GitHub Free / Private の根拠
+
+- https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments
+- https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets
+- https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches
+- https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets
+- https://docs.github.com/en/actions/reference/security/secure-use

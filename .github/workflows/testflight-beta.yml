@@ -12,6 +12,10 @@ on:
           - upload
         default: validate
         required: true
+      approved_commit:
+        description: Full 40-character main commit SHA approved for this run
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -23,8 +27,14 @@ concurrency:
 jobs:
   testflight:
     # Review and merge separately before this credential-bearing workflow can run.
-    if: github.ref == 'refs/heads/main'
-    environment: testflight-beta
+    # These guards constrain this workflow, not access to Repository Secrets by other workflows.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'Junald69/WanBuddy' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      inputs.approved_commit == github.sha
     runs-on: macos-26
     timeout-minutes: 35
     defaults:
@@ -37,13 +47,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.sha }}
 
       - name: Validate operation and existing guards before generating project
         env:
           OPERATION: ${{ inputs.operation }}
+          APPROVED_COMMIT: ${{ inputs.approved_commit }}
         run: |
           set -euo pipefail
-          case "$OPERATION" in validate|upload) ;; *) exit 1 ;; esac
+          bash scripts/testflight_request.sh
           case "$BUILD_NUMBER" in ''|*[!0-9]*) exit 1 ;; esac
           test "$BUILD_NUMBER" -ge 1 && test "$BUILD_NUMBER" -le 9999
           test -n "$APPLE_TEAM_ID"
